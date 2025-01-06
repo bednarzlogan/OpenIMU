@@ -101,4 +101,4 @@ def eval_dQbe_kronecer():
 
     nominal_attitude = sp.Matrix([phi, theta, psi])
     kron_coefficient = kronecker_product(sp.eye(3), nominal_attitude.T)
-    return (kron_coefficient * dQbe_inv_dE)  # noqa
+    return (kron_coefficient * dQbe_inv_dE)

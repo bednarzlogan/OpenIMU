@@ -1,32 +1,8 @@
 import sympy as sp
-import rotation_matrices as rt
-
-
-def skew_symmetric_matrix(vector):
-    """
-    Construct the skew-symmetric matrix of a 3D vector.
-
-    Args:
-        vector (list or sympy.Matrix): A 3-element list or
-        sympy.Matrix representing the vector.
-
-    Returns:
-        sympy.Matrix: The skew-symmetric matrix representation of the vector.
-    """
-    if len(vector) != 3:
-        raise ValueError("Input vector must have exactly 3 elements.")
-
-    # Extract components of the vector
-    v_x, v_y, v_z = vector
-
-    # Construct the skew-symmetric matrix
-    skew_matrix = sp.Matrix([
-        [0, -v_z, v_y],
-        [v_z, 0, -v_x],
-        [-v_y, v_x, 0]
-    ])
-
-    return skew_matrix
+from typing import List
+import python.utils.rotation_matrices as rt
+import python.utils.utils as ut
+import python.utils.stochastic as st
 
 
 def r_dot():
@@ -42,9 +18,16 @@ def r_dot():
     # define the attitude contribution
     attitude_contribution = sp.zeros(3, 3)
 
+    # define the moving accelerometer bias contribution
+    accel_bias_contribution = sp.zeros(3, 3)
+
+    # define the moving gyro bias contribution
+    gyro_bias_contribution = sp.zeros(3, 3)
+
     # horizontally concatenate state contributions to form final matrix
     state_transition = sp.Matrix(
-        sp.Matrix.hstack(position_contribution, velocity_contribution, attitude_contribution)
+        sp.Matrix.hstack(position_contribution, velocity_contribution, attitude_contribution,
+                         accel_bias_contribution, gyro_bias_contribution)
     )
 
     # the control input to the acceleration will be the accelerometer perturbations
@@ -55,7 +38,7 @@ def r_dot():
     return state_transition, control_input
 
 
-def dv_dot():
+def v_dot():
     """
     Compute the linearized acceleration dynamics and extract state transition
     and control input matrices.
@@ -84,11 +67,18 @@ def dv_dot():
 
     # formulate cross product effect of the body rotations into a skew-symmetric
     # matrix
-    attitude_contribution = skew_symmetric_matrix(transformed_accel)
+    attitude_contribution = ut.skew_symmetric_matrix(transformed_accel)
+
+    # define the moving accelerometer bias contribution
+    accel_bias_contribution = -1*rotation_matrix
+
+    # define the moving gyro bias contribution
+    gyro_bias_contribution = sp.zeros(3, 3)
 
     # horizontally concatenate state contributions to form final matrix
     state_transition = sp.Matrix(
-        sp.Matrix.hstack(position_contribution, velocity_contribution, attitude_contribution)
+        sp.Matrix.hstack(position_contribution, velocity_contribution, attitude_contribution,
+                         accel_bias_contribution, gyro_bias_contribution)
     )
 
     # the control input to the acceleration will be the accelerometer perturbations
@@ -126,9 +116,16 @@ def E_dot():
     # define the perturbation in Q_be portion
     attitude_contribution = rt.eval_dQbe_kronecer()
 
+    # define the moving accelerometer bias contribution
+    accel_bias_contribution = sp.zeros(3, 3)
+
+    # define the moving gyro bias contribution
+    gyro_bias_contribution = -1*rt.Qbe_inv
+
     # horizontally concatenate state contributions to form final matrix
     state_transition = sp.Matrix(
-        sp.Matrix.hstack(position_contribution, velocity_contribution, attitude_contribution)
+        sp.Matrix.hstack(position_contribution, velocity_contribution, attitude_contribution,
+                         accel_bias_contribution, gyro_bias_contribution)
     )
 
     # define control input (gyro reading portion)
@@ -139,5 +136,79 @@ def E_dot():
     return state_transition, control_input
 
 
+def discretize_system(state_transition: sp.Matrix,
+                      control_input: sp.Matrix,
+                      noise_input: sp.Matrix):
+    # take the continuous time dynamics and use the discretization
+    # tools in utils to form discrete dynamics
+    # these will all default to second order
+
+    # get discrete state transition
+    Phi = ut.produce_discrete_state_transition(state_transition)
+
+    # get discrete control input
+    Gamma = ut.produce_discrete_control_input(state_transition,
+                                              control_input)
+
+    # define the process noise covariance in general
+    _, n_states = noise_input.shape()
+    qs = sp.MatrixSymbol('qs', n_states, 1)
+    noise_covariance = sp.diag(*qs)
+
+    # get discrete noise input
+    Gwk = ut.perform_van_loans(state_transition,
+                               noise_input,
+                               noise_covariance)
+
+    return [Phi, Gamma, Gwk]
+
+
+def main() -> List[sp.Matrix]:
+    # collect EOM matrix rows
+    state_trasition_row_vel, control_input_row_vel = r_dot()
+    state_trasition_row_acc, control_input_row_acc = v_dot()
+    state_trasition_row_att, control_input_row_att = E_dot()
+
+    # add in the stochastic elements (white noise in acceleration and attitude rate eqs)
+    # and the FOGMP for the accel and gyro biases
+    state_transition_fogmp_acc, control_input_acc = st.FOGMP_accelerometer()
+    state_transition_fogmp_gyro, control_input_gyro = st.FOGMP_gyro()
+
+    # define full state transition matrix
+    state_transition = sp.Matrix.vstack(state_trasition_row_vel,
+                                        state_trasition_row_acc,
+                                        state_trasition_row_att,
+                                        state_transition_fogmp_acc,
+                                        state_transition_fogmp_gyro)
+
+    # define full control input matrix
+    control_input = sp.Matrix.vstack(control_input_row_vel,
+                                     control_input_row_acc,
+                                     control_input_row_att,
+                                     control_input_acc,
+                                     control_input_gyro)
+
+    # define the process noise input matrix
+    r_dot_noise = st.r_dot_noise()
+    v_dot_noise = st.v_dot_noise()
+    E_dot_noise = st.E_dot_noise()
+    accel_bias_noise = st.transient_accel_bias()
+    gyro_bias_noise = st.transient_gyro_bias()
+
+    # define the process noise input matrix
+    process_noise_input = sp.Matrix.vstack(r_dot_noise,
+                                           v_dot_noise,
+                                           E_dot_noise,
+                                           accel_bias_noise,
+                                           gyro_bias_noise)
+
+    # discretize the continuous time dynamics
+    discrete_system = discretize_system(state_transition,
+                                        control_input,
+                                        process_noise_input)
+
+    return discrete_system
+
+
 if __name__ == "__main__":
-    pass
+    system_dynamics = main()  # TMP: main shouldn't return anything, except maybe a code like 1
