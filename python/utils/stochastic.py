@@ -1,5 +1,5 @@
 import sympy as sp
-import rotation_matrices as rt
+import utils.rotation_matrices as rt
 
 
 def r_dot_noise():
@@ -22,10 +22,8 @@ def r_dot_noise():
     transient_accel_bias_contribution = sp.zeros(3, 3)
 
     # define the rows of the noise input matrix
-    noise_input = sp.Matrix(
-        sp.hstack(accelerometer_noise_contribution, gyroscope_noise_contribution,
-                  transient_accel_bias_contribution, transient_accel_bias_contribution)
-    )
+    noise_input = sp.Matrix.hstack(accelerometer_noise_contribution, gyroscope_noise_contribution,
+                                   transient_accel_bias_contribution, transient_accel_bias_contribution)
 
     return noise_input
 
@@ -53,10 +51,8 @@ def v_dot_noise():
     transient_accel_bias_contribution = sp.zeros(3, 3)
 
     # define the rows of the noise input matrix
-    noise_input = sp.Matrix(
-        sp.hstack(accelerometer_noise_contribution, gyroscope_noise_contribution,
-                  transient_accel_bias_contribution, transient_accel_bias_contribution)
-    )
+    noise_input = sp.Matrix.hstack(accelerometer_noise_contribution, gyroscope_noise_contribution,
+                                   transient_accel_bias_contribution, transient_accel_bias_contribution)
 
     return noise_input
 
@@ -84,10 +80,8 @@ def E_dot_noise():
     transient_accel_bias_contribution = sp.zeros(3, 3)
 
     # define the rows of the noise input matrix
-    noise_input = sp.Matrix(
-        sp.hstack(accelerometer_noise_contribution, gyroscope_noise_contribution,
-                  transient_accel_bias_contribution, transient_accel_bias_contribution)
-    )
+    noise_input = sp.Matrix.hstack(accelerometer_noise_contribution, gyroscope_noise_contribution,
+                                   transient_accel_bias_contribution, transient_accel_bias_contribution)
 
     return noise_input
 
@@ -111,10 +105,8 @@ def transient_accel_bias():
     transient_accel_bias_contribution = sp.zeros(3, 3)
 
     # define the rows of the noise input matrix
-    noise_input = sp.Matrix(
-        sp.hstack(accelerometer_noise_contribution, gyroscope_noise_contribution,
-                  transient_accel_bias_contribution, transient_accel_bias_contribution)
-    )
+    noise_input = sp.Matrix.hstack(accelerometer_noise_contribution, gyroscope_noise_contribution,
+                                   transient_accel_bias_contribution, transient_accel_bias_contribution)
 
     return noise_input
 
@@ -138,10 +130,8 @@ def transient_gyro_bias():
     transient_accel_bias_contribution = sp.eye(3, 3)
 
     # define the rows of the noise input matrix
-    noise_input = sp.Matrix(
-        sp.hstack(accelerometer_noise_contribution, gyroscope_noise_contribution,
-                  transient_accel_bias_contribution, transient_accel_bias_contribution)
-    )
+    noise_input = sp.Matrix.hstack(accelerometer_noise_contribution, gyroscope_noise_contribution,
+                                   transient_accel_bias_contribution, transient_accel_bias_contribution)
 
     return noise_input
 
@@ -151,7 +141,7 @@ def FOGMP_accelerometer():
     Defines the FOGMP dynamic model for the accelerometer noise.
     """
     # define the time constant symbol for the accel bias
-    tau_a = sp.MatrixSymbol('tau_a', 3, 1)  # Nominal accelerometer readings
+    tau_ax, tau_ay, tau_az = sp.symbols('tau_ax tau_ay tau_az')  # Nominal accelerometer readings
 
     # define the position contribution
     position_contribution = sp.zeros(3, 3)
@@ -163,7 +153,11 @@ def FOGMP_accelerometer():
     attitude_contribution = sp.zeros(3, 3)
 
     # define the moving accelerometer bias contribution
-    accel_bias_contribution = (-1/tau_a)*sp.eye(3, 3)
+    accel_bias_contribution = sp.diag(
+        -1 / tau_ax,
+        -1 / tau_ay,
+        -1 / tau_az
+    )
 
     # define the moving gyro bias contribution
     gyro_bias_contribution = sp.zeros(3, 3)
@@ -187,7 +181,7 @@ def FOGMP_gyro():
     Defines the FOGMP dynamic model for the accelerometer noise.
     """
     # define the time constant symbol for the accel bias
-    tau_g = sp.MatrixSymbol('tau_g', 3, 1)  # Nominal accelerometer readings
+    tau_gx, tau_gy, tau_gz = sp.symbols('tau_gx tau_gy tau_gz')  # Nominal accelerometer readings
 
     # define the position contribution
     position_contribution = sp.zeros(3, 3)
@@ -202,7 +196,11 @@ def FOGMP_gyro():
     accel_bias_contribution = sp.zeros(3, 3)
 
     # define the moving gyro bias contribution
-    gyro_bias_contribution = (-1/tau_g)*sp.eye(3, 3)
+    gyro_bias_contribution = sp.diag(
+        -1 / tau_gx,
+        -1 / tau_gy,
+        -1 / tau_gz
+    )
 
     # horizontally concatenate state contributions to form final matrix
     state_transition = sp.Matrix(

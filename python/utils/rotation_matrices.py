@@ -12,6 +12,9 @@ lat, lon = sp.symbols('lat lon')
 # define roll, pitch and yaw
 phi, theta, psi = sp.symbols('phi theta psi')
 
+# define rol;, pitch, and yaw rates
+phi_dot, theta_dot, psi_dot = sp.symbols("phi_dot theta_dot psi_dot")
+
 # define some shorthands for the trig functions
 s_ph = sin(phi)
 c_ph = cos(phi)
@@ -99,6 +102,6 @@ def eval_dQbe_kronecer():
     def kronecker_product(A, B):
         return sp.Matrix(sp.BlockMatrix([[A[i, j] * B for j in range(A.shape[1])] for i in range(A.shape[0])]))  # noqa
 
-    nominal_attitude = sp.Matrix([phi, theta, psi])
+    nominal_attitude = sp.Matrix([phi_dot, theta_dot, psi_dot])
     kron_coefficient = kronecker_product(sp.eye(3), nominal_attitude.T)
     return (kron_coefficient * dQbe_inv_dE)

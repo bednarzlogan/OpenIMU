@@ -1,3 +1,0 @@
-/home/bednarzlogan/code/IMU_Codes/build/CMakeFiles/IMU_model.dir
-/home/bednarzlogan/code/IMU_Codes/build/CMakeFiles/edit_cache.dir
-/home/bednarzlogan/code/IMU_Codes/build/CMakeFiles/rebuild_cache.dir

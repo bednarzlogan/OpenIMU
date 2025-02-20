@@ -1,0 +1,24 @@
+{
+    "name": "C++ Dev Container with Eigen",
+    "build": {
+      "dockerfile": "../dockerfile",
+      "context": ".."
+    },
+    "customizations": {
+        "vscode": {
+            "settings": {
+            "terminal.integrated.shell.linux": "/bin/bash"
+            },
+            "extensions": [
+            "ms-vscode.cpptools",
+            "ms-vscode.cmake-tools",
+            "llvm-vs-code-extensions.vscode-clangd"
+            ]
+        }
+    },
+    "remoteUser": "root",
+    "mounts": [
+      "source=${localWorkspaceFolder}/cpp_source,target=/workspace/cpp_source,type=bind,consistency=cached"
+    ]
+}
+  

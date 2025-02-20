@@ -29,7 +29,7 @@ def skew_symmetric_matrix(vector):
     return skew_matrix
 
 
-def approx_matrix_exponential(Matrix, order):
+def approx_matrix_exponential(Matrix: sp.Matrix, order: int) -> sp.Matrix:
     """
     Approximate the matrix exponential using a truncated Taylor series.
 
@@ -40,12 +40,14 @@ def approx_matrix_exponential(Matrix, order):
     Returns:
         sympy.Matrix: Approximation of the matrix exponential.
     """
+    rows: int = 0
+    cols: int = 0
     rows, cols = Matrix.shape
     if rows != cols:
         raise ValueError(f'The matrix is not square. Shape is: ({rows}, {cols})')
 
     # Initialize with the identity matrix
-    approx_mexp = sp.eye(rows)
+    approx_mexp: sp.Matrix = sp.eye(rows)
 
     # Compute the Taylor series up to the specified order
     for i in range(1, order):  # Start at 1 to skip the first identity term
@@ -66,7 +68,7 @@ def produce_discrete_state_transition(State_Transition: sp.Matrix, phi_order=2):
 
 def produce_discrete_control_input(State_Transition: sp.Matrix,
                                    Control_Input: sp.Matrix,
-                                   order: int = 2):
+                                   order: int = 2) -> sp.Matrix:
     """
     Produces the discrete control input matrix from the continuous time
     version
@@ -75,10 +77,10 @@ def produce_discrete_control_input(State_Transition: sp.Matrix,
 
     # get size of the continuous time control input and allocate an
     # identity matrix to start our series with
-    rows, _ = State_Transition.shape()
-    Gamma = sp.eye(rows)*Ts
+    rows, _ = State_Transition.shape
+    Gamma: sp.Matrix = sp.eye(rows)*Ts
 
-    def approx_input_order(Gamma, order):
+    def approx_input_order(Gamma: sp.Matrix, order: int) -> sp.Matrix:
         if order == 1:
             return Gamma
 
@@ -93,7 +95,7 @@ def produce_discrete_control_input(State_Transition: sp.Matrix,
     return Gamma
 
 
-def perform_van_loans(A, G, Q, order=2):
+def perform_van_loans(A: sp.Matrix, G: sp.Matrix, Q: sp.Matrix, order: int=2) -> sp.Matrix:
     """
     Perform Van Loan's method to compute the discrete-time process noise covariance.
 
@@ -114,20 +116,21 @@ def perform_van_loans(A, G, Q, order=2):
     if Q.shape[0] != G.shape[1] or Q.shape[1] != G.shape[1]:
         raise ValueError("Matrix Q must match the dimensions of G.")
 
+    rows: int = 0
     rows, _ = A.shape
 
     # Construct the Van Loan matrix
-    M = sp.Matrix.vstack(
+    M: sp.Matrix = sp.Matrix.vstack(
         sp.Matrix.hstack(-A.T, G * Q * G.T),
         sp.Matrix.hstack(sp.zeros(rows, rows), A)
     )
 
     # Compute the matrix exponential
-    exp_M = approx_matrix_exponential(M, order)
+    exp_M: sp.Matrix = approx_matrix_exponential(M, order)
 
     # Extract the relevant blocks for Qd
-    E11 = exp_M[:rows, :rows]
-    E12 = exp_M[:rows, rows:]
-    Qd = E11.T * E12
+    E11: sp.Matrix = exp_M[:rows, :rows]
+    E12: sp.Matrix = exp_M[:rows, rows:]
+    Qd: sp.Matrix = E11.T * E12
 
     return Qd

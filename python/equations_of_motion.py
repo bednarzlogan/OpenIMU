@@ -1,8 +1,12 @@
-import sympy as sp
+#import time
 from typing import List
-import python.utils.rotation_matrices as rt
-import python.utils.utils as ut
-import python.utils.stochastic as st
+
+import sympy as sp
+import utils.rotation_matrices as rt
+import utils.stochastic as st
+import utils.utils as ut
+import utils.write_to_hpp as hpp
+#import web_resources.web_resources as wr
 
 
 def r_dot():
@@ -56,7 +60,11 @@ def v_dot():
     rotation_matrix = rt.R_ENU_BODY
 
     # Nominal accelerometer readings in navigation frame
-    fb = sp.MatrixSymbol('fb', 3, 1)  # Nominal accelerometer readings
+    fbx, fby, fbz = sp.symbols('fbx fby fbz')
+
+    # Nominal accelerometer readings
+    fb = sp.Matrix([fbx, fby, fbz])
+
     transformed_accel = rotation_matrix * fb
 
     # account for the position contribution to the linear acceleration
@@ -151,8 +159,28 @@ def discretize_system(state_transition: sp.Matrix,
                                               control_input)
 
     # define the process noise covariance in general
-    _, n_states = noise_input.shape()
-    qs = sp.MatrixSymbol('qs', n_states, 1)
+    # this was not tokenizing well into cpp, so I had to do all the terms explicitly
+    # _, n_states = noise_input.shape
+    # qs = sp.MatrixSymbol('qs', n_states, 1)
+
+    # accelerometer bias variance
+    sig_ax, sig_ay, sig_az = sp.symbols("sig_ax sig_ay sig_az")
+
+    # gyro bias variance
+    sig_gx, sig_gy, sig_gz = sp.symbols("sig_gx sig_gy sig_gz")
+
+    # white noise on accelerometer bias
+    sig_tax, sig_tay, sig_taz = sp.symbols("sig_tax sig_tay sig_taz")
+
+    # white noise on gyro bias
+    sig_tgx, sig_tgy, sig_tgz = sp.symbols("sig_tgx sig_tgy sig_tgz")
+
+    # define the list of all white noise terms
+    qs = [sig_ax, sig_ay, sig_az, 
+          sig_gx, sig_gy, sig_gz, 
+          sig_tax, sig_tay, sig_taz, 
+          sig_tgx, sig_tgy, sig_tgz]
+
     noise_covariance = sp.diag(*qs)
 
     # get discrete noise input
@@ -206,6 +234,34 @@ def main() -> List[sp.Matrix]:
     discrete_system = discretize_system(state_transition,
                                         control_input,
                                         process_noise_input)
+
+    # print out some example matrices
+    # wr.publish_matrix(state_transition, "Continuous Phi")
+    # time.sleep(5)
+    # wr.publish_matrix(control_input, "Continuous Gamma")
+    # time.sleep(5)
+    # wr.publish_matrix(discrete_system[2], "Discrete Q")
+
+    # TODO - review matrix outputs and output to Cpp with jacobians where needed
+
+    # set the IDs and comments for the CPP export
+    state_transition_ID = "phi_k"
+    state_transition_comment = "discrete time IMU state transition matrix"
+    state_transition_discrete = discrete_system[0]
+    state_tranistion_dict = {state_transition_ID: (state_transition_discrete, state_transition_comment)}
+
+    control_input_ID = "gamma_uk"
+    control_input_comment ="matrix which projects IMU accelerometer/gyro readouts onto state"
+    control_input_discrete = discrete_system[1]
+    control_input_dict = {control_input_ID: (control_input_discrete, control_input_comment)}
+
+    discrete_noise_covariance_ID = "gamma_wk"
+    discrete_noise_covariance_comment ="matrix which projects IMU accelerometer/gyro reading noise onto state"
+    discrete_noise_covariance = discrete_system[2]
+    noisel_input_dict = {discrete_noise_covariance_ID: (discrete_noise_covariance, discrete_noise_covariance_comment)}
+    
+    # test write out
+    hpp.export_matrices_to_hpp([state_tranistion_dict, control_input_dict, noisel_input_dict], filename="IMU_Matrices.hpp")
 
     return discrete_system
 
