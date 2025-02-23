@@ -3,9 +3,51 @@
 #define GENERATED_MATRICES_HPP
 
 #include <Eigen/Dense>
+#include <iostream>
+
+// struct for setting up IMU dynamics based on an external file read
+struct Config {
+    // variance in accelerometer readings
+    double sig_ax, sig_ay, sig_az;
+    // variance in gyro readings
+    double sig_gx, sig_gy, sig_gz;
+    // white noise variance for accel. FOGMP
+    double sig_tax, sig_tay, sig_taz;
+    // white noise variance for gyro FOGMP
+    double sig_tgx, sig_tgy, sig_tgz;
+    // time constant for gyro bias FOGMP
+    double tau_gx, tau_gy, tau_gz;
+    // time constant for accelerometer bias FOGMP
+    double tau_ax, tau_ay, tau_az;
+    // time between system updates
+    double Ts;
+};
+
+// measurements and expected state vector definitions to be explicit
+// about what we're assigning
+struct ImuData {
+    double accx, accy, accz;
+    double dphix, dthetay, dpsiz;
+    uint len = 6;
+    double measurement_time;
+    Eigen::Matrix<double, 6, 1> matrix_form_measurement;
+};
+
+struct ImuStateVector { 
+    double pos_x, pos_y, pos_z;
+    double vel_x, vel_y, vel_z;
+    double phi, theta, psi;
+    double bias_x, bias_y, bias_z;
+    double bias_phi, bias_theta, bias_psi;
+    uint len = 15;
+    double solution_time;
+    Eigen::Matrix<double, 15, 1> matrix_form_states;
+};
 
 class GeneratedMatrices {
 public:
+    GeneratedMatrices();
+
     // discrete time IMU state transition matrix
     Eigen::Matrix<double, 15, 15> eval_phi_k()  {
         Eigen::Matrix<double, 15, 15> mat;
@@ -718,7 +760,7 @@ public:
         return mat;
     }
 
-    void update_nominal_state(Eigen::Matrix<double, 15, 1> nominal_state, Eigen::Matrix<double, 6, 1> IMU_measurements) {
+    void update_nominal_state(ImuStateVector nominal_state, ImuData imu_measurements) {
         // hard code for now 
         // make this a memory map auto generation from the python hpp generator
         // we'll deine the state vector as:
@@ -730,11 +772,55 @@ public:
         // b_e -> moving IMU gyro bias
 
         // update attitude
-        phi = nominal_state(6, 1);
+        phi = nominal_state.phi;
+        theta = nominal_state.theta;
+        psi = nominal_state.psi;
 
 
         // the IMU measurements will be ingested as the linearization points for the attitude interpretation
+        fbx = imu_measurements.accx;
+        fby = imu_measurements.accy;
+        fbz = imu_measurements.accz;
 
+        psi_dot = imu_measurements.dpsiz;
+        theta_dot = imu_measurements.dthetay;
+    }
+
+    void accept_configs(Config system_configs) {
+        // open loaded configurations and assign member variables
+        // accelerometer white noise
+        sig_ax = system_configs.sig_ax;
+        sig_ay = system_configs.sig_ay;
+        sig_az = system_configs.sig_az;
+
+        // gyro white noise
+        sig_gx = system_configs.sig_gx;
+        sig_gy = system_configs.sig_gy;
+        sig_gz = system_configs.sig_gz;
+
+        // FOGMP accelerometer white noise
+        sig_tax = system_configs.sig_tax;
+        sig_tay = system_configs.sig_tay;
+        sig_taz = system_configs.sig_taz;
+
+        // FOGMP gyro white noise
+        sig_tgx = system_configs.sig_tgx;
+        sig_tgy = system_configs.sig_tgy;
+        sig_tgz = system_configs.sig_tgz;
+
+        // time constants for FOGMPs
+        tau_gx = system_configs.tau_gx;
+        tau_gy = system_configs.tau_gy;
+        tau_gz = system_configs.tau_gz;
+    
+        tau_ax = system_configs.tau_ax;
+        tau_ay = system_configs.tau_ay;
+        tau_az = system_configs.tau_az;  
+        
+        // set system update time
+        Ts = system_configs.Ts;
+
+        std::cout << "State space models are configured" << std::endl;
     }
 
     private:

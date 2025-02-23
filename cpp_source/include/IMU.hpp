@@ -1,11 +1,9 @@
 #ifndef IMU_HPP // prevents multiple inclusions 
 #define IMU_HPP
 
-#include <iostream>
-#include <fstream>
+#include "IMU_Matrices.hpp"
 
 #include <string>
-#include <vector>
 
 #include <Eigen/Dense>
 #include <nlohmann/json.hpp>
@@ -23,25 +21,6 @@ using json = nlohmann::json;
 // this script will produce discrete state estimates in PVA according to 
 // its configuration 
 
-
-// struct for setting up IMU dynamics based on an external file read
-struct Config {
-    // variance in accelerometer readings
-    double sig_ax, sig_ay, sig_az;
-    // variance in gyro readings
-    double sig_gx, sig_gy, sig_gz;
-    // white noise variance for accel. FOGMP
-    double sig_tax, sig_tay, sig_taz;
-    // white noise variance for gyro FOGMP
-    double sig_tgx, sig_tgy, sig_tgz;
-    // time constant for gyro bias FOGMP
-    double tau_gx, tau_gy, tau_gz;
-    // time constant for accelerometer bias FOGMP
-    double tau_ax, tau_ay, tau_az;
-    // time between system updates
-    double Ts;
-};
-
 class IMU {
     public:
         // generic constructor definition 
@@ -56,17 +35,23 @@ class IMU {
 
         // Here, we fetch the state transition, control input matrix and process noise matrix
         // for dynamic updates. We provide a state vector to serve as our nominal states
-        std::vector<Matrix> set_dynamics(Vector nominal_states);
+        void set_dynamics(Vector nominal_states);
 
         // process IMU measurements
         // TODO - this is currently going to read one line from a static file for pre-recorded measurements
-        Vector read_IMU_measurements();
+        void read_IMU_measurements();
+
+        // perform time update
+        void perform_time_update(ImuData imu_measurements);
 
     private:
         std::string _configuration_file_path;
         std::string _measurements_file_path;  // the path to the pre-recorded messages
-        Vector _nominal_states;
+        ImuStateVector _nominal_states;
         Matrix _state_covariance;
+        Config _config;  // defined in IMU matrices.hpp
+        GeneratedMatrices _state_space_model;  // from IMU matrices.hpp
+        bool _solution_initialized;
 };
 
 #endif
