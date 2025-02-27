@@ -7,7 +7,7 @@
 #include <vector>
 
 
-IMU::IMU(std::string configs_path): _configuration_file_path(configs_path) { 
+IMU::IMU(std::string configs_path): _configuration_file_path(configs_path), _solution_initialized(false) { 
   // load in the system configurations
   std::ifstream inFile(configs_path);
   if (!inFile.is_open()) {
@@ -50,9 +50,29 @@ IMU::IMU(std::string configs_path): _configuration_file_path(configs_path) {
 }
 
 
-void IMU::set_dynamics(Vector nominal_states) {
-  // points of linearization to the state space model manager
-  _state_space_model.update_nominal_state(_nominal_states, _imu_measurements);
+void IMU::set_initialization(const ImuStateVector& initial_solution, 
+                             const ImuCovariance& initial_covariance, 
+                             const ImuData& initial_measurement) {
+  // the state vector components are actually expressed as a deviation from the last known solution
+  _nominal_states = initial_solution;
+  _state_covariance = initial_covariance;
+
+  // sanity check the dimension of the state vector & diagonal of the covariance
+  if (initial_solution.len != initial_covariance.len) {
+    std::string error_string = "Reveived a state vector with a size that doesn't match the diagonal of the supposed state covariance: (";
+    std::cerr << error_string << initial_solution.len << ", " << initial_covariance.len << ")" << std::endl; 
+    return;
+  }
+
+  // set the initial perturbation state to be zeros (perturbation covariance is the same as the regular state covariance)
+  _num_states = initial_solution.len;
+  _delta_states.matrix_form_states = Eigen::MatrixXd::Zero(_num_states); 
+
+  // set the initial points of linearization for the IMU measurements to be this inital measurement
+  _nominal_measurements = initial_measurement;
+  
+  _solution_initialized = true;
+  return;
 }
 
 
@@ -125,15 +145,18 @@ void IMU::read_IMU_measurements() {
     }
 
     // set imu measurement for the time update
+    imu_measurements.updateFromMatrix();  // populate enumerated doubles for explicit language in later functions 
     perform_time_update(imu_measurements);
   }
 
   // close the file
   infile.close();
+  return;
 }
 
 
 void IMU::perform_time_update(ImuData imu_measurements) {
+  // TODO - not using solution times because we're not interfacing with real data yet
   // This function is the core of what the IMU provides to the system runtime
   // Here, we will:
     // read in new IMU measurements (from a file, for now)
@@ -146,15 +169,25 @@ void IMU::perform_time_update(ImuData imu_measurements) {
   // update the nominal states
   _state_space_model.update_nominal_state(_nominal_states, imu_measurements);
 
-  // get state space matrices
-  Eigen::Matrix<double, 15, 15> Phi_k = _state_space_model.eval_phi_k();
-  Eigen::Matrix<double, 15, 6> Gam_uk = _state_space_model.eval_gamma_uk();
-  Eigen::Matrix<double, 15, 15> Gam_wk = _state_space_model.eval_gamma_wk(); // TODO - actually Q, not the process noise input
+  // update the delta for IMU measurements and state
+  // TODO -- really should avoid dynamic sizing, where possible
+  Eigen::MatrixXd delta_imu_measurements = imu_measurements.matrix_form_measurement - _nominal_measurements.matrix_form_measurement;
+
+  // get state space matrices -- TODO we should statically allocate these when we're sure on what model we want
+  Eigen::MatrixXd Phi_k = _state_space_model.eval_phi_k();
+  Eigen::MatrixXd Gam_uk = _state_space_model.eval_gamma_uk();
+  Eigen::MatrixXd Gam_wk = _state_space_model.eval_gamma_wk(); // TODO - actually Q, not the process noise input
 
   // update nominal state estimate
   // TODO -- this should actually be formed from the deviation state vector
-  _nominal_states.matrix_form_states = Phi_k * _nominal_states.matrix_form_states + Gam_uk * imu_measurements.matrix_form_measurement;
+  // TODO -- the IMU measurements are also supposed to be in linearized form (delta states)
+  _delta_states.matrix_form_states = Phi_k * _delta_states.matrix_form_states + Gam_uk * delta_imu_measurements;
 
   // update nominal state covariance
-  Eigen::Matrix<double, 15, 15> _state_covariance = Phi_k * _state_covariance * Phi_k.transpose() + Gam_wk;
+  _state_covariance.covariance_matrix = Phi_k * _state_covariance.covariance_matrix * Phi_k.transpose() + Gam_wk;
+
+  // update nominal state (x - x_nom) -> x
+  _nominal_states.matrix_form_states = _delta_states.matrix_form_states + _nominal_states.matrix_form_states;
+  _nominal_states.updateFromMatrix();  // calls a function from the struct to populate the enumerated doubles
+  return;
 }

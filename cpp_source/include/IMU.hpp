@@ -27,15 +27,10 @@ class IMU {
         // we will want to add definitions for alignment procedures soon
         IMU(std::string configs_path);
 
-        // TODO:
-        //  we will work to leverage the matrices contained ni IMU_Matrices.hpp to accomplish the 
-        //  dynamic updates.
-        //  These matrices constitute a full IMU model, so interfacing with them will largely constitute
-        //  updating the nominal state that the class holds.
-
-        // Here, we fetch the state transition, control input matrix and process noise matrix
-        // for dynamic updates. We provide a state vector to serve as our nominal states
-        void set_dynamics(Vector nominal_states);
+        // provide an external solution for the kickoff of the IMU
+        void set_initialization(const ImuStateVector& initial_solution, 
+                                const ImuCovariance& initial_covariance, 
+                                const ImuData& initial_measurement);
 
         // process IMU measurements
         // TODO - this is currently going to read one line from a static file for pre-recorded measurements
@@ -44,14 +39,25 @@ class IMU {
         // perform time update
         void perform_time_update(ImuData imu_measurements);
 
+        // TODO - make something for a << operator for terminal viewing
+
     private:
+        // basic app configs, state vector size
         std::string _configuration_file_path;
         std::string _measurements_file_path;  // the path to the pre-recorded messages
-        ImuStateVector _nominal_states;
-        Matrix _state_covariance;
         Config _config;  // defined in IMU matrices.hpp
-        GeneratedMatrices _state_space_model;  // from IMU matrices.hpp
+
         bool _solution_initialized;
+        uint _num_states;
+
+        // solutions and points of linearization
+        ImuStateVector _nominal_states;  // points of linearization of the state vector
+        ImuStateVector _delta_states;  // the perturbation from the linearization points set as the _nominal_state_vector 
+        ImuCovariance _state_covariance;
+        ImuData _nominal_measurements;  // points of linearization for the IMU measurements
+
+        // main math model for the IMU state/covariance propagation
+        GeneratedMatrices _state_space_model;  // from IMU matrices.hpp
 };
 
 #endif

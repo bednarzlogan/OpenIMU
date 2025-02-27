@@ -31,6 +31,16 @@ struct ImuData {
     uint len = 6;
     double measurement_time;
     Eigen::Matrix<double, 6, 1> matrix_form_measurement;
+
+    // call to update doubles
+    void updateFromMatrix() {
+        accx    = matrix_form_measurement(0);
+        accy    = matrix_form_measurement(1);
+        accz    = matrix_form_measurement(2);
+        dphix   = matrix_form_measurement(3);
+        dthetay = matrix_form_measurement(4);
+        dpsiz   = matrix_form_measurement(5);
+    }
 };
 
 struct ImuStateVector { 
@@ -42,6 +52,31 @@ struct ImuStateVector {
     uint len = 15;
     double solution_time;
     Eigen::Matrix<double, 15, 1> matrix_form_states;
+
+    // call to update doubles
+    void updateFromMatrix() {
+        pos_x    = matrix_form_states(0);
+        pos_y    = matrix_form_states(1);
+        pos_z    = matrix_form_states(2);
+        vel_x    = matrix_form_states(3);
+        vel_y    = matrix_form_states(4);
+        vel_z    = matrix_form_states(5);
+        phi      = matrix_form_states(6);
+        theta    = matrix_form_states(7);
+        psi      = matrix_form_states(8);
+        bias_x   = matrix_form_states(9);
+        bias_y   = matrix_form_states(10);
+        bias_z   = matrix_form_states(11);
+        bias_phi = matrix_form_states(12);
+        bias_theta = matrix_form_states(13);
+        bias_psi = matrix_form_states(14);
+    }
+};
+
+struct ImuCovariance {
+    uint len = 15;  // amount of elements along the diagonal (matrix is square)
+    double solution_time;
+    Eigen::Matrix<double, 15, 15> covariance_matrix;
 };
 
 class GeneratedMatrices {
@@ -760,7 +795,7 @@ public:
         return mat;
     }
 
-    void update_nominal_state(ImuStateVector nominal_state, ImuData imu_measurements) {
+    void update_nominal_state(ImuStateVector& nominal_state, ImuData& imu_measurements) {
         // hard code for now 
         // make this a memory map auto generation from the python hpp generator
         // we'll deine the state vector as:
@@ -775,7 +810,6 @@ public:
         phi = nominal_state.phi;
         theta = nominal_state.theta;
         psi = nominal_state.psi;
-
 
         // the IMU measurements will be ingested as the linearization points for the attitude interpretation
         fbx = imu_measurements.accx;
@@ -832,6 +866,7 @@ public:
         double fbz;
 
         // last known gyro readings
+        // TODO - why is yaw not included? Double check derivation
         double psi_dot;
         double theta_dot;
 
