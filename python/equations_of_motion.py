@@ -65,7 +65,7 @@ def v_dot():
     # Nominal accelerometer readings
     fb = sp.Matrix([fbx, fby, fbz])
 
-    transformed_accel = rotation_matrix * fb
+    transformed_accel = rotation_matrix * fb 
 
     # account for the position contribution to the linear acceleration
     position_contribution = sp.zeros(3, 3)
@@ -75,7 +75,7 @@ def v_dot():
 
     # formulate cross product effect of the body rotations into a skew-symmetric
     # matrix
-    attitude_contribution = ut.skew_symmetric_matrix(transformed_accel)
+    attitude_contribution = ut.skew_symmetric_matrix(transformed_accel)  
 
     # define the moving accelerometer bias contribution
     accel_bias_contribution = -1*rotation_matrix

@@ -44,9 +44,21 @@ def export_matrices_to_hpp(matrices_list: List[Dict[str, Tuple[sp.Matrix, str]]]
             for symbol in sorted(symbols, key=lambda s: s.name):  # Sort by symbol name for readability
                 file.write(f"    double {symbol};\n")
             file.write("\n")
-  
+
+        # TODO - make a "hypothetical" matrix which is something like M_tmp = sp.hstack(matrices_list[0], matrices_list[1], ...)
+        #        so that the optimization step find the smallest number of common terms
+
+        # EX. 
+        # control_input = sp.Matrix(
+        #     sp.Matrix.hstack(sp.zeros(3, 3), sp.zeros(3, 3))
+        # )
+
         # Open the file for writing
         with open(full_file_path, "a") as file:
+            # TODO - before looping through the matrices, we should define all the "replacements" and write in the basics of the hpp
+             
+
+
             # Generate a function for each matrix
             for matrices in matrices_list:  
                 for label, (matrix, comment) in matrices.items():
@@ -79,7 +91,7 @@ def export_matrices_to_hpp(matrices_list: List[Dict[str, Tuple[sp.Matrix, str]]]
                     
                     # Declare variables for other common sub-expressions found by cse
                     for i, (common_expr, replacement) in enumerate(replacements):
-                        matrix_code += f"        double x{i} = {ccode(replacement)};  // {common_expr}\n"
+                        matrix_code += f"        double x{i} = {ccode(replacement)};\n"
                     matrix_code += "\n"
 
                     # Populate each element in the matrix using the reduced matrix
