@@ -84,7 +84,7 @@ Qbe_inv = sp.Matrix([
 dQbe_inv_dE = sp.Matrix([
     [0, 0, 0],
     [c_ph*t_th, s_ph*(sec_th**2), 0],
-    [-s_ph*t_th, c_ph*(sec_th)**2, 0],
+    [-s_ph*t_th, c_ph*(sec_th**2), 0],
     [0, 0, 0],
     [-s_ph, 0, 0],
     [-c_ph, 0, 0],

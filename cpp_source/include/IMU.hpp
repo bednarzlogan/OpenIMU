@@ -3,7 +3,9 @@
 
 #include "IMU_Matrices.hpp"
 
+#include <ostream>
 #include <string>
+#include <queue>
 
 #include <Eigen/Dense>
 #include <nlohmann/json.hpp>
@@ -25,12 +27,16 @@ class IMU {
     public:
         // generic constructor definition 
         // we will want to add definitions for alignment procedures soon
-        IMU(std::string configs_path);
+        #ifdef SIM_MODE
+            IMU(const std::string configs_path, std::string path_to_measurements_csv);
+        #else
+            IMU(const std::string configs_path, std::queue<ImuData>& imu_measurements_queue);
+        #endif
 
         // provide an external solution for the kickoff of the IMU
-        void set_initialization(const ImuStateVector& initial_solution, 
-                                const ImuCovariance& initial_covariance, 
-                                const ImuData& initial_measurement);
+        void set_initialization(ImuStateVector& initial_solution, 
+                                ImuCovariance& initial_covariance, 
+                                ImuData& initial_measurement);
 
         // process IMU measurements
         // TODO - this is currently going to read one line from a static file for pre-recorded measurements
@@ -40,6 +46,10 @@ class IMU {
         void perform_time_update(ImuData imu_measurements);
 
         // TODO - make something for a << operator for terminal viewing
+        bool get_measurements(ImuData new_data);
+
+        // cout operator for compact logging conventions
+        friend std::ostream& operator<<(std::ostream& os, const IMU& obj);
 
     private:
         // basic app configs, state vector size
@@ -55,9 +65,18 @@ class IMU {
         ImuStateVector _delta_states;  // the perturbation from the linearization points set as the _nominal_state_vector 
         ImuCovariance _state_covariance;
         ImuData _nominal_measurements;  // points of linearization for the IMU measurements
+        double _solution_time;  // last solution time
 
         // main math model for the IMU state/covariance propagation
         GeneratedMatrices _state_space_model;  // from IMU matrices.hpp
+
+        // we have a path to sim data if we're running in sim mode
+        #ifdef SIM_MODE
+            std::string _measurements_file;
+        #else
+            // for non-sim mode, we'll hold a location for IMU measurements
+            std::queue<ImuData>& _imu_measurements_queue;
+        #endif
 };
 
 #endif

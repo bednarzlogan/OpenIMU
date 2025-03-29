@@ -1,3 +1,5 @@
 *venv*
 *.vscode*
 *build*
+*.csv
+*.txt

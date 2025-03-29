@@ -1,4 +1,5 @@
-#import time
+#import web_resources.web_resources as wr  # this is a niche lib I made to see the matrices in a nice format, but I replaced it with the markdown printout
+import os
 from typing import List
 
 import sympy as sp
@@ -6,7 +7,6 @@ import utils.rotation_matrices as rt
 import utils.stochastic as st
 import utils.utils as ut
 import utils.write_to_hpp as hpp
-#import web_resources.web_resources as wr
 
 
 def r_dot():
@@ -235,12 +235,20 @@ def main() -> List[sp.Matrix]:
                                         control_input,
                                         process_noise_input)
 
-    # print out some example matrices
-    # wr.publish_matrix(state_transition, "Continuous Phi")
-    # time.sleep(5)
-    # wr.publish_matrix(control_input, "Continuous Gamma")
-    # time.sleep(5)
-    # wr.publish_matrix(discrete_system[2], "Discrete Q")
+    printout_markdown = "dynamics_printout.md"
+    if os.path.exists(printout_markdown):
+        os.remove(printout_markdown)
+    with open("dynamics_printout.md", 'a') as file:
+        file.write("# Deterministic Dynamics Printout\n\n")
+        file.write("## State transition matrix\n\n")
+        file.write(f"$${sp.latex(state_transition)}$$")
+        file.write("\n\n")
+
+        file.write("## Control Input matrix\n\n")
+        file.write(f"$${sp.latex(control_input)}$$\n")
+
+        print(f"""Wrote continuous time state transition and control input matrices to {printout_markdown}. 
+              Use a markdown viewer to see the latex formatted matrices""")
 
     # TODO - review matrix outputs and output to Cpp with jacobians where needed
 
@@ -261,7 +269,7 @@ def main() -> List[sp.Matrix]:
     noisel_input_dict = {discrete_noise_covariance_ID: (discrete_noise_covariance, discrete_noise_covariance_comment)}
     
     # test write out
-    hpp.export_matrices_to_hpp([state_tranistion_dict, control_input_dict, noisel_input_dict], filename="IMU_Matrices.hpp")
+    hpp.export_matrices_to_hpp([state_tranistion_dict, control_input_dict, noisel_input_dict], filename="IMU_Matrices_hold.hpp")
 
     return discrete_system
 

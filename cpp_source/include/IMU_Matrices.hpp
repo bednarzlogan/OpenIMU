@@ -41,6 +41,15 @@ struct ImuData {
         dthetay = matrix_form_measurement(4);
         dpsiz   = matrix_form_measurement(5);
     }
+
+    void updateFromDoubles() {
+        matrix_form_measurement(0) = accx;
+        matrix_form_measurement(1) = accy;
+        matrix_form_measurement(2) = accz;
+        matrix_form_measurement(3) = dphix;
+        matrix_form_measurement(4) = dthetay;
+        matrix_form_measurement(5) = dpsiz;
+    }
 };
 
 struct ImuStateVector { 

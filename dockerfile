@@ -13,6 +13,7 @@ RUN apt-get update && \
         libeigen3-dev \
         nlohmann-json3-dev \
         clangd-10 \
+        gdb \
         && ln -s /usr/bin/clangd-10 /usr/bin/clangd \
         && rm -rf /var/lib/apt/lists/*
 

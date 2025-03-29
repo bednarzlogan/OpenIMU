@@ -9,6 +9,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # generates a compile commands json that can integrate with clangd
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# set sim mode on
+add_compile_definitions(SIM_MODE)
+
 # add exec target 
 add_executable(
   IMU_model
