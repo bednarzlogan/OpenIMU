@@ -1,0 +1,23 @@
+site_name: "OpenIMU Model"
+
+theme:
+  name: material
+
+plugins:
+  - search
+  - mkdoxy:
+      projects:
+        myProjectCpp:
+          src-dirs: cpp_source
+          full-doc: True
+          doxy-cfg:
+            FILE_PATTERNS: "*.cpp *.hpp*"
+            RECURSIVE: True
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: ["./python"]
+nav:
+  - Home: index.md
+  - C++ API: myProjectCpp/index.md
+  - Python API: python.md

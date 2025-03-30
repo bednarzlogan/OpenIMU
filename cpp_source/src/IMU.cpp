@@ -102,7 +102,7 @@ Config read_configs(std::ifstream& inFile) {
     _state_space_model.accept_configs(_config);
 
     // we can find our state vector size from the state space model generator
-    _num_states = _state_space_model.len;
+    _num_states = _state_space_model.NUM_STATES_IMU;
   }
 #endif
 
@@ -252,9 +252,6 @@ void IMU::perform_time_update(ImuData imu_measurements) {
   // check that we've initialized
   if (!_solution_initialized)
     return;
-
-   if (_solution_time == 337) 
-    std::cout << "HERE!\n" << std::endl; 
 
   // update the nominal states
   _state_space_model.update_nominal_state(_nominal_states, _nominal_measurements);

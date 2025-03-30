@@ -14,6 +14,7 @@ RUN apt-get update && \
         nlohmann-json3-dev \
         clangd-10 \
         gdb \
+        doxygen \
         && ln -s /usr/bin/clangd-10 /usr/bin/clangd \
         && rm -rf /var/lib/apt/lists/*
 

@@ -17,6 +17,7 @@ add_executable(
   IMU_model
   src/main.cpp 
   src/IMU.cpp
+  src/measurement_handler.cpp
 )
 
 # add include target_include_directories
