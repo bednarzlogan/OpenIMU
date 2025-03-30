@@ -122,7 +122,6 @@ void IMU::set_initialization(ImuStateVector& initial_solution,
   _nominal_measurements = initial_measurement;
   
   _solution_initialized = true;
-  return;
 }
 
 
@@ -274,7 +273,7 @@ void IMU::perform_time_update(ImuData imu_measurements) {
   _state_covariance.covariance_matrix = Phi_k * _state_covariance.covariance_matrix * Phi_k.transpose() + Gam_wk;
 
   // update nominal state (dx + x_nom) -> x
-  _nominal_states.matrix_form_states = _delta_states.matrix_form_states + _nominal_states.matrix_form_states;
+  _nominal_states.matrix_form_states += _delta_states.matrix_form_states;
   std::cout << "cur nominal states are \n" << _nominal_states.matrix_form_states << "\n\n";
 
   _nominal_states.updateFromMatrix();  // calls a function from the struct to populate the enumerated doubles

@@ -51,6 +51,7 @@ public:
      * @return true if an element was popped; false if the queue was empty.
      */
     bool try_pop(T& result) {
+        // could use std::optional
         std::lock_guard<std::mutex> lock(m_mutex);
         if (m_queue.empty())
             return false;

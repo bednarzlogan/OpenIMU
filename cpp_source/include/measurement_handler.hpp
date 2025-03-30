@@ -1,67 +1,132 @@
-#ifndef MEASUREMENT_HANDLER_HPP
-#define MEASUREMENT_HANDLER_HPP
+#pragma once
 
 #include <atomic>
 #include <cstdint>
+#include <thread>
 #include <Eigen/Dense>
 
 #include "IMU_Matrices.hpp"
 #include "thread_safe_queue.hpp"
 
-/* So far, I'm just using this for measurement smoothing, but we may use it more later! */
-
+/**
+ * @brief Handles the ingestion, smoothing, and delivery of IMU measurements.
+ *
+ * The MeasurementHandler class is responsible for:
+ * - Receiving IMU data (currently from a file, later possibly from a real-time sensor).
+ * - Performing a rolling average to smooth noisy IMU data.
+ * - Delivering smoothed data to a consumer (e.g., a Kalman filter).
+ *
+ * Data ingestion and smoothing run in a dedicated thread. The class supports configuration
+ * via JSON for queue length and smoothing parameters.
+ */
 class MeasurementHandler {
     public:
-        // generic constructor : configs will tell us how much smoothing to do
+       /**
+        * @brief Construct a new Measurement Handler object.
+        * 
+        * @param path_to_configs Path to a JSON config file specifying smoothing behavior.
+        */
         MeasurementHandler(const std::string path_to_configs);
 
-        // gives a measurement back to the consumer
+        /**
+        * @brief Attempt to retrieve a smoothed IMU measurement.
+        * 
+        * This is a non-blocking call. It returns false if no smoothed measurements are available.
+        * 
+        * @param return_measurement Output reference for the retrieved measurement.
+        * @return true if a measurement was available, false otherwise.
+        */
         bool pullData(ImuData& return_measurement);
 
-        // give it a measurement to queue up
+        /**
+        * @brief Submit a new raw IMU measurement to the handler.
+        * 
+        * @param new_measurement The new raw IMU data.
+        */
         void pushData(ImuData new_measurement);
 
-        // flushes queues, flags that we're no longer accepting/processing measurements
+        /**
+        * @brief Reset the smoothing system and clear internal buffers.
+        * 
+        * Stops ongoing reading and processing, and resets all measurement state.
+        */
         void resetSmoother();
 
-        // for now, this plays back data from a file. Later, this will probably
-        // be an SPI for interacting with IMU hardware
+        /**
+        * @brief Starts reading a stream of IMU measurements from a file.
+        * 
+        * This function reads and parses a CSV file of IMU data, pushes raw measurements
+        * into the smoothing queue, and spawns a background thread to smooth and prepare data.
+        * 
+        * @param path_to_measurements_file CSV file containing IMU data.
+        * @return Status code (0 = success, nonzero = error).
+        */
         int openMeasurementStream(std::string path_to_measurements_file);
 
     private:
-        // queues: 
-        ThreadQueue<ImuData> _measurements_queue; // all msmts coming from sensor/file
-        std::deque<ImuData> _window_queue; // the measurements we're going to smooth
-        std::deque<ImuData> _smoothed_measurements; // ready-to-use measurements
+        /** Thread-safe queue containing raw IMU data from sensors or files. */
+        ThreadQueue<ImuData> _measurements_queue;
 
-        // the averaging time
+        /** Internal buffer holding the most recent measurements for rolling averaging. */
+        std::deque<ImuData> _window_queue;
+
+        /** Queue of smoothed measurements that are ready for processing. */
+        std::deque<ImuData> _smoothed_measurements;
+
+        /** Duration (in seconds) to average over; set via config file. */
         double _average_time;
 
-        // current measurement delta to find how long the buffer is
+        /** Timestamp of the oldest measurement in the current smoothing window. */
         double _oldest_time;
+
+        /** Duration covered by the smoothing window. */
         double _queue_time;
 
-        // how often should we check for new measurements
-        uint16_t _check_freq = 5;  // check for a meausrement every X ms 
-        std::atomic<bool> _reading{false}; // tells us that we're still parsing meausremens
+        /** Milliseconds between measurement queue polling attempts. */
+        uint16_t _check_freq = 5;
 
-        // have an array of known size to hold the window
-        // measurements in. If we can't get enough time
-        // before a certain amount of time passes or something like that,
-        // just parse the measurement
+        /** Flag indicating whether the measurement consumer loop is running. */
+        std::atomic<bool> _reading{false};
+
+        /** Thread running the measurement loop (_loopTimer). */
+        std::thread _loop_thread;
+
+        /** Maximum number of measurements to retain in the smoothing window. */
         uint8_t _max_queue_size = 5;
-        
 
-        // smoothed measuremement
+        /** True once enough measurements have been received to start smoothing. */
         bool _measurement_initialized;
-        ImuData _smoothed_measurement;
-        Eigen::MatrixXd _msmt_to_remove; // to-be-subtracted element when window slides 
 
-        // perform a windowed average
+        /** The most recent smoothed measurement. */
+        ImuData _smoothed_measurement;
+
+        /** Cached value of the to-be-removed element from the last smoothing cycle. */
+        Eigen::MatrixXd _msmt_to_remove;
+
+        /**
+        * @brief Start the background smoothing thread.
+        */
+        void _startLoop();
+
+        /**
+        * @brief Stop the background smoothing thread and join safely.
+        */
+        void _stopLoop();
+
+        /**
+        * @brief Perform a smoothing pass using the current measurement.
+        * 
+        * Applies a rolling average using `_max_queue_size` measurements.
+        * Updates the smoothed queue with the new result.
+        * 
+        * @param new_measurement The newest IMU measurement.
+        */
         void _doSmoothing(const ImuData& new_measurement);
-        
-        // checks for new measurements
+
+        /**
+        * @brief The background loop that polls for measurements and triggers smoothing.
+        * 
+        * Runs in its own thread while `_reading == true`. Controlled via `_startLoop` and `_stopLoop`.
+        */
         void _loopTimer();
 };
-
-#endif // MEASUREMENT_HANDLER_HPP

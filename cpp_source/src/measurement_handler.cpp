@@ -8,22 +8,39 @@
 
 using json = nlohmann::json;
 
+void MeasurementHandler::_startLoop() {
+    if (_reading)
+        return; // already running the thread
+
+    _reading = true;
+    _loop_thread = std::thread(&MeasurementHandler::_loopTimer, this);
+}
+
+void MeasurementHandler::_stopLoop() {
+    _reading = false;
+    if (_loop_thread.joinable()) {
+        _loop_thread.join();  // Wait for thread to finish cleanly
+    }
+
+    // clean up variables
+    _window_queue.clear();
+    _smoothed_measurements.clear();
+    _measurement_initialized = false;
+    _queue_time = 0;
+}
+
 void MeasurementHandler::_loopTimer() {
     while (_reading) {
-        /* attempt to pull in a measurement and produce a measurmement */
+        /* attempt to pull in a measurement and produce a measurement */
 
         // enforces the checking frequency
         std::this_thread::sleep_for(std::chrono::milliseconds(_check_freq));
-
-        // allocate a flag that the que has measurements we can grab
-        bool m_avail = false; 
 
         // allocate a placeholder that will be populated by try_pop, if possible
         ImuData result_measurement;
 
         // try to get a measurement and smooth
-        m_avail = _measurements_queue.try_pop(result_measurement);
-        if (m_avail) {
+        if (_measurements_queue.try_pop(result_measurement)) {
             _doSmoothing(result_measurement);
         }
     }
@@ -52,10 +69,8 @@ MeasurementHandler::MeasurementHandler(const std::string path_to_configs):
 }
 
 void MeasurementHandler::resetSmoother() {
-    _window_queue.clear();
-    _measurement_initialized = false;
-    _queue_time = 0;
-    _reading = false;
+    // cutoff processing until we're set to go again
+    _stopLoop();
 }
 
 bool MeasurementHandler::pullData(ImuData& return_measurement) {
@@ -70,7 +85,6 @@ bool MeasurementHandler::pullData(ImuData& return_measurement) {
 void MeasurementHandler::pushData(ImuData new_measurement) { 
     // give the data to the queue in a thread safe way
     _measurements_queue.push(new_measurement);
-    return;
 }
 
 void MeasurementHandler::_doSmoothing(const ImuData& new_measurement) { 
@@ -126,8 +140,7 @@ int MeasurementHandler::openMeasurementStream(std::string path_to_measurements_f
     int return_code = 0;
 
     // start consumer
-    _reading = true;
-    std::thread(&MeasurementHandler::_loopTimer, this).detach();
+    _startLoop();
 
     std::ifstream infile(path_to_measurements_file);
     if (!infile.is_open()) {
@@ -184,15 +197,6 @@ int MeasurementHandler::openMeasurementStream(std::string path_to_measurements_f
           case 0:
             imu_measurements.measurement_time = measurement*1e-3;  // timestamps are in msec
             break;
-          case 4:
-            imu_measurements.accx = measurement * M_PI/180;
-            break;
-          case 5:
-            imu_measurements.accy = measurement * M_PI/180;
-            break;
-          case 6:
-            imu_measurements.accz = measurement * M_PI/180;
-            break;
           case 1:
             imu_measurements.dphix = measurement;
             break;
@@ -201,6 +205,15 @@ int MeasurementHandler::openMeasurementStream(std::string path_to_measurements_f
             break;
           case 3:
             imu_measurements.dpsiz = measurement;
+            break;
+            case 4:
+            imu_measurements.accx = measurement * M_PI/180;
+            break;
+          case 5:
+            imu_measurements.accy = measurement * M_PI/180;
+            break;
+          case 6:
+            imu_measurements.accz = measurement * M_PI/180;
             break;
           default:
             __builtin_unreachable();
@@ -214,6 +227,7 @@ int MeasurementHandler::openMeasurementStream(std::string path_to_measurements_f
   
     // close the file
     infile.close();
-    resetSmoother();
+    _reading = false;
+    _stopLoop();
     return return_code;
 }
