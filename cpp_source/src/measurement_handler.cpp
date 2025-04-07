@@ -3,10 +3,53 @@
 #include <nlohmann/json.hpp>
 #include <thread>
 
+// writing current date and time to the debug file
+#include <ctime>
+#include <iostream>
+
 #include "IMU_Matrices.hpp"
 #include "measurement_handler.hpp"
 
 using json = nlohmann::json;
+
+std::string formatLogName(std::string base_name, std::string extension = ".txt") {
+  auto time = std::time(nullptr);  // returns current time, null tells it we aren't assigning to a timer
+  auto tm = *std::localtime(&time);  // time in a struct that works with strftime
+
+  // make the datetime into a string and concatenate with the base name
+  char buffer[80];
+  std::strftime(buffer, sizeof(buffer), "%Y_%m_%d_%H_%M_%S", &tm);
+  return base_name + "_" + std::string(buffer) + extension;
+}
+
+std::ofstream diag_log_smoother(formatLogName("measurement_smoother_out"), std::ios::app);
+
+MeasurementHandler::MeasurementHandler(const std::string path_to_configs):
+    _oldest_time(0),
+    _queue_time(0),
+    _measurement_initialized(false),
+    _streaming_measurements(true)
+{
+    // open a file stream to read from
+    std::ifstream inFile(path_to_configs);
+    if (!inFile.is_open()) {
+        std::cerr << "Could not open config file: " << path_to_configs << std::endl;
+    }
+
+    // stream the chars into a json object
+    json j;
+    inFile >> j;
+
+    // find the config for the averaging window
+    _average_time = j["averaging_time"];  // TODO - not used until we move to real time
+
+    // find a max queue size argument
+    _max_queue_size = j["max_queue_size"];
+}
+
+bool MeasurementHandler::getStreamStatus() const { 
+    return _streaming_measurements;
+}
 
 void MeasurementHandler::_startLoop() {
     if (_reading)
@@ -24,13 +67,13 @@ void MeasurementHandler::_stopLoop() {
 
     // clean up variables
     _window_queue.clear();
-    _smoothed_measurements.clear();
     _measurement_initialized = false;
     _queue_time = 0;
+    _streaming_measurements = false;
 }
 
 void MeasurementHandler::_loopTimer() {
-    while (_reading) {
+    while (_reading || !_measurements_queue.empty()) {
         /* attempt to pull in a measurement and produce a measurement */
 
         // enforces the checking frequency
@@ -46,33 +89,6 @@ void MeasurementHandler::_loopTimer() {
     }
 }
 
-MeasurementHandler::MeasurementHandler(const std::string path_to_configs):
-    _oldest_time(0),
-    _queue_time(0),
-    _measurement_initialized(false)
-{
-    // open a file stream to read from
-    std::ifstream inFile(path_to_configs);
-    if (!inFile.is_open()) {
-        std::cerr << "Could not open config file: " << path_to_configs << std::endl;
-    }
-
-    // stream the chars into a json object
-    json j;
-    inFile >> j;
-
-    // find the config for the averaging window
-    _average_time = j["averaging_time"];  // TODO - not used until we move to real time
-
-    // find a max queue size argument
-    _max_queue_size = j["_max_queue_size"];
-}
-
-void MeasurementHandler::resetSmoother() {
-    // cutoff processing until we're set to go again
-    _stopLoop();
-}
-
 bool MeasurementHandler::pullData(ImuData& return_measurement) {
     // get a measurement when available
     /// NOTE: maybe we can just do try_pop and continue pushing measurements
@@ -85,6 +101,13 @@ bool MeasurementHandler::pullData(ImuData& return_measurement) {
 void MeasurementHandler::pushData(ImuData new_measurement) { 
     // give the data to the queue in a thread safe way
     _measurements_queue.push(new_measurement);
+}
+
+bool MeasurementHandler::getSmoothedData(ImuData& smoothed_measurement){
+    if (!_streaming_measurements && _smoothed_measurements.empty())
+        return false;
+    _smoothed_measurements.wait_and_pop(smoothed_measurement);
+    return true;
 }
 
 void MeasurementHandler::_doSmoothing(const ImuData& new_measurement) { 
@@ -127,8 +150,19 @@ void MeasurementHandler::_doSmoothing(const ImuData& new_measurement) {
         }
 
         // add to queue of ready-to-process measurements
-        _smoothed_measurements.push_front(_smoothed_measurement);
-    }
+        diag_log_smoother << "\nSmoothed Measurement: \n" 
+                        << _smoothed_measurement.matrix_form_measurement.transpose() 
+                        << "\nat time: " 
+                        << _smoothed_measurement.measurement_time 
+                        << std::endl;
+        _smoothed_measurements.push(_smoothed_measurement);
+    } 
+    else {
+        // the sliding window won't slow down the measurement dt
+        // to maintain this for all time, return the unsmoothed measurements
+        // until we have smoothed measurements to give
+        _smoothed_measurements.push(new_measurement);
+    } 
 
     // update the dt of the queue -- not used right now
     _queue_time = new_measurement.measurement_time - _oldest_time;
@@ -178,7 +212,6 @@ int MeasurementHandler::openMeasurementStream(std::string path_to_measurements_f
       // allocate the measurement and assign the variables
       ImuData imu_measurements;
       uint count = 0;
-      bool contains_numbers = false;
   
       // kind of lengthy, but I'm doing this to be explicit about what is what in assigning members in the 
       // state space model
@@ -192,28 +225,27 @@ int MeasurementHandler::openMeasurementStream(std::string path_to_measurements_f
           break;
         }
   
-        contains_numbers = true;
         switch (count) {
           case 0:
             imu_measurements.measurement_time = measurement*1e-3;  // timestamps are in msec
             break;
           case 1:
-            imu_measurements.dphix = measurement;
+            imu_measurements.dphix = measurement * M_PI/180;
             break;
           case 2:
-            imu_measurements.dthetay = measurement;
+            imu_measurements.dthetay = measurement * M_PI/180;
             break;
           case 3:
-            imu_measurements.dpsiz = measurement;
+            imu_measurements.dpsiz = measurement * M_PI/180;
             break;
             case 4:
-            imu_measurements.accx = measurement * M_PI/180;
+            imu_measurements.accx = measurement * 9.80665;  // convert g's to m/s^2, assuming the input is in g's (standard for IMU)
             break;
           case 5:
-            imu_measurements.accy = measurement * M_PI/180;
+            imu_measurements.accy = measurement * 9.80665;
             break;
           case 6:
-            imu_measurements.accz = measurement * M_PI/180;
+            imu_measurements.accz = measurement * 9.80665 - 9.80665; // The imu will read 1g when stationary, so we need to zero it out for the z-axis
             break;
           default:
             __builtin_unreachable();
@@ -222,12 +254,15 @@ int MeasurementHandler::openMeasurementStream(std::string path_to_measurements_f
       }
 
       // push into queue
+      imu_measurements.updateFromDoubles();  // ensure the matrix form is populated before pushing
+      std::cout << "Pushing IMU measurement: " 
+                << imu_measurements.matrix_form_measurement.head(3).transpose() 
+                << " at time: " << imu_measurements.measurement_time << std::endl;
       pushData(imu_measurements);
     }
   
     // close the file
     infile.close();
-    _reading = false;
     _stopLoop();
     return return_code;
 }

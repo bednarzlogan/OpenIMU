@@ -91,7 +91,7 @@ public:
     static const uint8_t NUM_STATES_IMU = 15;
     static const uint8_t NUM_IMU_MEASUREMENTS = 6;
 
-    GeneratedMatrices();
+    GeneratedMatrices() = default;
 
     // discrete time IMU state transition matrix
     Eigen::Matrix<double, 15, 15> eval_phi_k()  {

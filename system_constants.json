@@ -17,6 +17,8 @@
     "tau_ax": 0.7,
     "tau_ay": 0.7,
     "tau_az": 0.7,
-    "Ts": 0.01
+    "Ts": 0.01,
+    "averaging_time": 0.1,
+    "max_queue_size": 5
 }
   

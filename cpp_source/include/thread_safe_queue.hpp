@@ -18,12 +18,12 @@ public:
     /**
      * @brief Constructs a new ThreadQueue object.
      */
-    ThreadQueue();
+    ThreadQueue() = default;
 
     /**
      * @brief Destroys the ThreadQueue object.
      */
-    ~ThreadQueue();
+    ~ThreadQueue() = default;
 
     /**
      * @brief Pushes an element into the queue.
@@ -86,6 +86,15 @@ public:
     bool empty() const {
         std::lock_guard<std::mutex> lock(m_mutex);
         return m_queue.empty();
+    }
+
+    /**
+     * @brief Resets the queue to an empty state.
+     */
+    void clear() {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        std::queue<T> empty;
+        std::swap(m_queue, empty);
     }
 
 private:

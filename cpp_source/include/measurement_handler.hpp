@@ -26,7 +26,7 @@ class MeasurementHandler {
         * 
         * @param path_to_configs Path to a JSON config file specifying smoothing behavior.
         */
-        MeasurementHandler(const std::string path_to_configs);
+        MeasurementHandler(std::string path_to_configs);
 
         /**
         * @brief Attempt to retrieve a smoothed IMU measurement.
@@ -46,11 +46,18 @@ class MeasurementHandler {
         void pushData(ImuData new_measurement);
 
         /**
-        * @brief Reset the smoothing system and clear internal buffers.
+        * @brief Attempt to get a new smoothed measurement.
         * 
-        * Stops ongoing reading and processing, and resets all measurement state.
+        * @param smoothed_measurement Will be overwritten with a new measurement once available.
         */
-        void resetSmoother();
+        bool getSmoothedData(ImuData& smoothed_measurement);
+
+        /**
+        * @brief tell an outside subscriber if we're still reading measurements
+        *
+        * @return Status code (false = not reading, true = reading). 
+        */
+        bool getStreamStatus() const;
 
         /**
         * @brief Starts reading a stream of IMU measurements from a file.
@@ -71,7 +78,7 @@ class MeasurementHandler {
         std::deque<ImuData> _window_queue;
 
         /** Queue of smoothed measurements that are ready for processing. */
-        std::deque<ImuData> _smoothed_measurements;
+        ThreadQueue<ImuData> _smoothed_measurements;
 
         /** Duration (in seconds) to average over; set via config file. */
         double _average_time;
@@ -87,6 +94,9 @@ class MeasurementHandler {
 
         /** Flag indicating whether the measurement consumer loop is running. */
         std::atomic<bool> _reading{false};
+
+        /** Flag that indicates if the measurement stream is still open */
+        std::atomic<bool> _streaming_measurements{false};
 
         /** Thread running the measurement loop (_loopTimer). */
         std::thread _loop_thread;

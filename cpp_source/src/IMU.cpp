@@ -3,13 +3,22 @@
 
 #include <iostream>
 #include <fstream>
-#include <sstream>
-#include <vector>
 #include <cmath>
+#include <thread>
 
 // tmp debugger log
 // the operator below allows us to make shorthand diag_log << this calls
-std::ofstream diag_log("IMU_out.txt", std::ios::app);
+std::string formatLogName2(std::string base_name, std::string extension = ".txt") {
+  auto time = std::time(nullptr);  // returns current time, null tells it we aren't assigning to a timer
+  auto tm = *std::localtime(&time);  // time in a struct that works with strftime
+
+  // make the datetime into a string and concatenate with the base name
+  char buffer[80];
+  std::strftime(buffer, sizeof(buffer), "%Y_%m_%d_%H_%M_%S", &tm);
+  return base_name + "_" + std::string(buffer) + extension;
+}
+
+std::ofstream diag_log(formatLogName2("IMU_out"), std::ios::app);
 
 std::ostream& operator<<(std::ostream& os, const IMU& obj) {
   // TODO - put in more here
@@ -48,7 +57,7 @@ Config read_configs(std::ifstream& inFile) {
     hold_config.tau_ay  = j["tau_ay"];
     hold_config.tau_az  = j["tau_az"];
     hold_config.Ts      = j["Ts"]; 
-    
+
     // example printouts
     std::cout << "Configuration loaded successfully.\n";
     std::cout << "Accelerometer variance (sig_ax): " << hold_config.sig_ax << "\n";
@@ -77,9 +86,10 @@ Config read_configs(std::ifstream& inFile) {
     _state_space_model = GeneratedMatrices();
     _state_space_model.accept_configs(_config);
 
-    _num_states = _state_space_model.len;
+    _num_states = _state_space_model.NUM_STATES_IMU;
 
-    
+    // start the measurement handler
+    _measurement_handler = std::make_unique<MeasurementHandler>(configs_path);  
   }
 #else
   IMU::IMU(std::string configs_path, std::queue<ImuData>& imu_measurements_queue):
@@ -103,6 +113,9 @@ Config read_configs(std::ifstream& inFile) {
 
     // we can find our state vector size from the state space model generator
     _num_states = _state_space_model.NUM_STATES_IMU;
+
+    // start the measurement handler
+    _measurement_handler = std::make_unique<MeasurementHandler>(configs_path);
   }
 #endif
 
@@ -129,99 +142,20 @@ void IMU::read_IMU_measurements() {
   // open the measurements file -- TODO: this serves as the main parsing loop
   // we may maintain this structure as a while true statement where we continuously
   // read from a buffer of SPI-read IMU measurements
-  std::ifstream infile(_measurements_file_path);
-  if (!infile.is_open()) {
-    std::cerr << "Error: Could not open file: " << _measurements_file_path << std::endl;
-    return;
+
+  // open the measurement stream via a handler in the background
+  std::thread parser_thread(&MeasurementHandler::openMeasurementStream, 
+                            _measurement_handler.get(), 
+                            _measurements_file_path);
+
+  // set imu measurement for the time update
+  ImuData imu_measurements;
+  while (_measurement_handler->getSmoothedData(imu_measurements)) {
+    perform_time_update(imu_measurements);
+    diag_log << *this;
   }
 
-  std::string measurement_line;
-  std::string line;
-
-  // lines one at a time
-  while (std::getline(infile, line)) {
-    // assign a string stream to break up words
-    std::stringstream ss(line);
-    std::vector<std::string> row;
-    std::string value;
-
-    // interact with the stringstream to grab each word between delimiters
-    while (std::getline(ss, value, ',')) { // Parse CSV by commas
-      row.push_back(value);
-    }
-    
-    // TMP print outputs
-    for (const auto& elem : row) {
-      std::cout << elem << " ";
-    }
-    std::cout << std::endl;
-
-    // check for a complete 6 elements and convert to doubles
-    if (row.size() != 7) {
-      std::cerr << "Less than 6 measurements contained in row. CSV format is invalid!" << std::endl;
-      return;
-    }
-
-    // allocate the measurement and assign the variables
-    ImuData imu_measurements;
-    uint count = 0;
-    bool contains_numbers = false;
-
-    // kind of lengthy, but I'm doing this to be explicit about what is what in assigning members in the 
-    // state space model
-    for (const auto& elem : row) {
-      double measurement;
-
-      // if the line contains numbers, read in and asign to IMU measurement struct
-      try {
-        measurement = std::stod(elem);
-      } catch (const std::invalid_argument& e) {
-        break;
-      }
-
-      contains_numbers = true;
-      switch (count) {
-        case 0:
-          imu_measurements.measurement_time = measurement*1e-3;  // timestamps are in msec
-          _solution_time = measurement; 
-          break;
-        case 4:
-          imu_measurements.accx = measurement * M_PI/180;
-          break;
-        case 5:
-          imu_measurements.accy = measurement * M_PI/180;
-          break;
-        case 6:
-          imu_measurements.accz = measurement * M_PI/180;
-          break;
-        case 1:
-          imu_measurements.dphix = measurement;
-          break;
-        case 2:
-          imu_measurements.dthetay = measurement;
-          break;
-        case 3:
-          imu_measurements.dpsiz = measurement;
-          break;
-        default:
-          __builtin_unreachable();
-      }
-      count++;
-    }
-
-    // set imu measurement for the time update
-    if (contains_numbers) {
-      imu_measurements.updateFromDoubles();  // populate the matrix from solution from the double members 
-      perform_time_update(imu_measurements);
-
-      // TMP before better scheme -- log out
-      diag_log << *this;
-    }
-  }
-
-  // close the file
-  infile.close();
-  return;
+  parser_thread.join(); 
 }
 
 
@@ -264,6 +198,8 @@ void IMU::perform_time_update(ImuData imu_measurements) {
   Eigen::MatrixXd Gam_uk = _state_space_model.eval_gamma_uk();
   Eigen::MatrixXd Gam_wk = _state_space_model.eval_gamma_wk(); // TODO - actually Q, not the process noise input
 
+  diag_log << "state forcing from control input\n" << Gam_uk * delta_imu_measurements << "\n\n";
+
   // update nominal state estimate
   // TODO -- this should actually be formed from the deviation state vector
   // TODO -- the IMU measurements are also supposed to be in linearized form (delta states)
@@ -274,9 +210,10 @@ void IMU::perform_time_update(ImuData imu_measurements) {
 
   // update nominal state (dx + x_nom) -> x
   _nominal_states.matrix_form_states += _delta_states.matrix_form_states;
-  std::cout << "cur nominal states are \n" << _nominal_states.matrix_form_states << "\n\n";
+  //std::cout << "cur nominal states are \n" << _nominal_states.matrix_form_states << "\n\n";
 
   _nominal_states.updateFromMatrix();  // calls a function from the struct to populate the enumerated doubles
   _nominal_measurements = imu_measurements;  // we'll observe perturbations from this state of the body to contextualize future measurements 
+  _solution_time = imu_measurements.measurement_time; // update the solution time to the latest measurement time
   return;
 }

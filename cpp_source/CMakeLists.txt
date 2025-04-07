@@ -29,3 +29,7 @@ find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 # Link the project to Eigen 
 target_include_directories(IMU_model PRIVATE ${EIGEN3_INCLUDE_DIRS})
 target_compile_definitions(IMU_model PRIVATE ${EIGEN3_DEFINITIONS})
+
+# link POSIX for std thread 
+target_link_libraries(IMU_model PRIVATE pthread)
+

@@ -2,6 +2,7 @@
 #define IMU_HPP
 
 #include "IMU_Matrices.hpp"
+#include "measurement_handler.hpp"
 
 #include <ostream>
 #include <string>
@@ -69,6 +70,9 @@ class IMU {
 
         // main math model for the IMU state/covariance propagation
         GeneratedMatrices _state_space_model;  // from IMU matrices.hpp
+
+        // the handler for incoming IMU measurements
+        std::unique_ptr<MeasurementHandler> _measurement_handler;
 
         // we have a path to sim data if we're running in sim mode
         #ifdef SIM_MODE
