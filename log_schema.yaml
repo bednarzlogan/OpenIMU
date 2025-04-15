@@ -1,0 +1,64 @@
+"0x01":
+  name: Nominal State Vector
+  type: float32
+  length: 15
+  fields:
+    - pos_x
+    - pos_y
+    - pos_z
+    - vel_x
+    - vel_y
+    - vel_z
+    - phi
+    - theta
+    - psi
+    - bias_x
+    - bias_y
+    - bias_z
+    - bias_phi
+    - bias_theta
+    - bias_psi
+
+"0x02":
+  name: Delta State Update
+  type: float32
+  length: 15
+  fields:
+    - dpos_x
+    - dpos_y
+    - dpos_z
+    - dvel_x
+    - dvel_y
+    - dvel_z
+    - dphi
+    - dtheta
+    - dpsi
+    - dbias_x
+    - dbias_y
+    - dbias_z
+    - dbias_phi
+    - dbias_theta
+    - dbias_psi
+
+"0x03":
+  name: Raw IMU Measurement
+  type: float32
+  length: 6
+  fields:
+    - acc_x
+    - acc_y
+    - acc_z
+    - dphi
+    - dtheta
+    - dpsi
+"0x04":
+  name: Smoothed IMU Measurement
+  type: float32
+  length: 6
+  fields:
+    - acc_x
+    - acc_y
+    - acc_z
+    - dphi
+    - dtheta
+    - dpsi
