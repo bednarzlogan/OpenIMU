@@ -1,34 +1,15 @@
 #include "IMU.hpp"
 #include "IMU_Matrices.hpp"
 
+// for diag_log
+#include "logger.hpp" 
+
 #include <iostream>
 #include <fstream>
 #include <cmath>
 #include <thread>
 
-// tmp debugger log
-// the operator below allows us to make shorthand diag_log << this calls
-std::string formatLogName2(std::string base_name, std::string extension = ".txt") {
-  auto time = std::time(nullptr);  // returns current time, null tells it we aren't assigning to a timer
-  auto tm = *std::localtime(&time);  // time in a struct that works with strftime
-
-  // make the datetime into a string and concatenate with the base name
-  char buffer[80];
-  std::strftime(buffer, sizeof(buffer), "%Y_%m_%d_%H_%M_%S", &tm);
-  return base_name + "_" + std::string(buffer) + extension;
-}
-
-std::ofstream diag_log(formatLogName2("IMU_out"), std::ios::app);
-
-std::ostream& operator<<(std::ostream& os, const IMU& obj) {
-  // TODO - put in more here
-  os << "\nSolution time is " << obj._solution_time << " ms\n";
-  os << "Current State Vector is \n" << obj._nominal_states.matrix_form_states.transpose() << "\n";
-  os << "Current measurement is \n" << obj._nominal_measurements.matrix_form_measurement << "\n";
-
-  os << "\n";
-  return os;
-}
+Logger diag_logger(formatLogName("IMU_diag_log", ".bin")); // create a logger instance for diagnostics
 
 Config read_configs(std::ifstream& inFile) { 
     Config hold_config;
@@ -152,7 +133,6 @@ void IMU::read_IMU_measurements() {
   ImuData imu_measurements;
   while (_measurement_handler->getSmoothedData(imu_measurements)) {
     perform_time_update(imu_measurements);
-    diag_log << *this;
   }
 
   parser_thread.join(); 
@@ -173,7 +153,6 @@ bool IMU::get_measurements(ImuData new_data) {
     // if we got here, no meausrements were available
     return false;
 }
-
 
 void IMU::perform_time_update(ImuData imu_measurements) {
   // TODO - not using solution times because we're not interfacing with real data yet
@@ -198,8 +177,6 @@ void IMU::perform_time_update(ImuData imu_measurements) {
   Eigen::MatrixXd Gam_uk = _state_space_model.eval_gamma_uk();
   Eigen::MatrixXd Gam_wk = _state_space_model.eval_gamma_wk(); // TODO - actually Q, not the process noise input
 
-  diag_log << "state forcing from control input\n" << Gam_uk * delta_imu_measurements << "\n\n";
-
   // update nominal state estimate
   // TODO -- this should actually be formed from the deviation state vector
   // TODO -- the IMU measurements are also supposed to be in linearized form (delta states)
@@ -210,10 +187,12 @@ void IMU::perform_time_update(ImuData imu_measurements) {
 
   // update nominal state (dx + x_nom) -> x
   _nominal_states.matrix_form_states += _delta_states.matrix_form_states;
-  //std::cout << "cur nominal states are \n" << _nominal_states.matrix_form_states << "\n\n";
 
   _nominal_states.updateFromMatrix();  // calls a function from the struct to populate the enumerated doubles
   _nominal_measurements = imu_measurements;  // we'll observe perturbations from this state of the body to contextualize future measurements 
   _solution_time = imu_measurements.measurement_time; // update the solution time to the latest measurement time
+
+  // log out relevant states
+  _measurement_handler->log_vector_out(diag_logger, _nominal_states.matrix_form_states, LoggedVectorType::NominalState);
   return;
 }

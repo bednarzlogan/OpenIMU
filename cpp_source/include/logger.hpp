@@ -82,7 +82,7 @@ public:
      * 
      * @param filename Path to the binary log file.
      */
-    Logger(const std::string& log_file_name = "log.txt")
+    Logger(const std::string& log_file_name = "diag_log.bin")
         : start_time_(std::chrono::steady_clock::now()),
         wall_time_(std::chrono::system_clock::now())
     {
@@ -90,6 +90,18 @@ public:
         if (!out_.is_open()) {
             throw std::runtime_error("Failed to open log file");
         }
+
+        // Magic header constants
+        const uint32_t magic = 0x46474F4C; // ASCII "LOGF"
+        const uint8_t version = 1;
+        const uint8_t endianness = 1; // 1 = little-endian, 0 = big-endian
+
+        out_.write(reinterpret_cast<const char*>(&magic), sizeof(magic));
+        out_.write(reinterpret_cast<const char*>(&version), sizeof(version));
+        out_.write(reinterpret_cast<const char*>(&endianness), sizeof(endianness));
+
+        // newline for separation before datetime string for cat output readability
+        out_ << "\n";
 
         // we'll put in a precise UTC time header at the start of the log file
         // all other timestamps will be relative to this start time
@@ -99,7 +111,6 @@ public:
         std::strftime(buffer, sizeof(buffer), "# Log Start Time: %Y-%m-%d %H:%M:%S UTC\n", tm);
         out_ << buffer;
     }
-
 
     /**
      * @brief Flush any buffered log data to disk.

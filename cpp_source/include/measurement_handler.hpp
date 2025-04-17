@@ -8,6 +8,32 @@
 #include "IMU_Matrices.hpp"
 #include "thread_safe_queue.hpp"
 
+#include "logger.hpp" 
+#include "logger_conversions.hpp" // fconverts Eigen objects to arrays
+
+// used for logging states of interest
+constexpr uint16_t MSG_ID_NOMINAL_STATE = 0x01;
+constexpr uint16_t MSG_ID_DELTA_STATE_UPDATE = 0x02;
+constexpr uint16_t MSG_ID_RAW_IMU_MEASUREMENT = 0x03;
+constexpr uint16_t MSG_ID_SMOOTHED_IMU_MEASUREMENT = 0x04;
+
+enum class LoggedVectorType : uint16_t {
+    NominalState = MSG_ID_NOMINAL_STATE,
+    DeltaStateUpdate = MSG_ID_DELTA_STATE_UPDATE,
+    ImuRaw = MSG_ID_RAW_IMU_MEASUREMENT, 
+    ImuSmoothed =  MSG_ID_SMOOTHED_IMU_MEASUREMENT
+};
+
+inline std::string formatLogName(std::string base_name, std::string extension = ".txt") {
+    auto time = std::time(nullptr);  // returns current time, null tells it we aren't assigning to a timer
+    auto tm = *std::localtime(&time);  // time in a struct that works with strftime
+  
+    // make the datetime into a string and concatenate with the base name
+    char buffer[80];
+    std::strftime(buffer, sizeof(buffer), "%Y_%m_%d_%H_%M_%S", &tm);
+    return base_name + "_" + std::string(buffer) + extension;
+}
+
 /**
  * @brief Handles the ingestion, smoothing, and delivery of IMU measurements.
  *
@@ -69,6 +95,38 @@ class MeasurementHandler {
         * @return Status code (0 = success, nonzero = error).
         */
         int openMeasurementStream(std::string path_to_measurements_file);
+
+        // shorthand for logging the current state of the IMU
+        void log_vector_out(Logger& diag_logger, const Eigen::Matrix<double, Eigen::Dynamic, 1>& vec, LoggedVectorType type) {
+            switch (type){
+                case LoggedVectorType::NominalState:
+                    diag_logger.logMessage<15>(MSG_ID_NOMINAL_STATE, 
+                                DataType::Float32, 
+                                0x01, 
+                                convertVectorForLogging<15>(vec)); // log with a dummy message ID
+                    break;
+                case LoggedVectorType::DeltaStateUpdate:
+                    diag_logger.logMessage(MSG_ID_DELTA_STATE_UPDATE, 
+                                        DataType::Float32, 
+                                        0x01, 
+                                        convertVectorForLogging<6>(vec));
+                    break;
+                case LoggedVectorType::ImuRaw:
+                    diag_logger.logMessage(MSG_ID_RAW_IMU_MEASUREMENT, 
+                                        DataType::Float32, 
+                                        0x01, 
+                                        convertVectorForLogging<6>(vec));
+                        break;
+                case LoggedVectorType::ImuSmoothed:
+                    diag_logger.logMessage(MSG_ID_SMOOTHED_IMU_MEASUREMENT, 
+                        DataType::Float32, 
+                        0x01, 
+                        convertVectorForLogging<6>(vec));    
+                        break;    
+                default:
+                    throw std::invalid_argument("log_vector_out: Invalid message ID");
+            }
+        }
 
     private:
         /** Thread-safe queue containing raw IMU data from sensors or files. */

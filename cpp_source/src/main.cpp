@@ -8,7 +8,7 @@ int main() {
     std::string config_file_path = "system_constants.json";
 
     // define path to pre-recorded IMU data
-    std::string data_path = "t2.csv";
+    std::string data_path = "t0.csv";
 
     // define dummy measurement queue location
     // make a dummy meausrement

@@ -4,7 +4,6 @@
 #include "IMU_Matrices.hpp"
 #include "measurement_handler.hpp"
 
-#include <ostream>
 #include <string>
 #include <queue>
 
@@ -48,9 +47,6 @@ class IMU {
 
         // TODO - make something for a << operator for terminal viewing
         bool get_measurements(ImuData new_data);
-
-        // cout operator for compact logging conventions
-        friend std::ostream& operator<<(std::ostream& os, const IMU& obj);
 
     private:
         // basic app configs, state vector size

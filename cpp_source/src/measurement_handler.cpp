@@ -10,19 +10,10 @@
 #include "IMU_Matrices.hpp"
 #include "measurement_handler.hpp"
 
+// for diag_log
 using json = nlohmann::json;
 
-std::string formatLogName(std::string base_name, std::string extension = ".txt") {
-  auto time = std::time(nullptr);  // returns current time, null tells it we aren't assigning to a timer
-  auto tm = *std::localtime(&time);  // time in a struct that works with strftime
-
-  // make the datetime into a string and concatenate with the base name
-  char buffer[80];
-  std::strftime(buffer, sizeof(buffer), "%Y_%m_%d_%H_%M_%S", &tm);
-  return base_name + "_" + std::string(buffer) + extension;
-}
-
-std::ofstream diag_log_smoother(formatLogName("measurement_smoother_out"), std::ios::app);
+Logger diag_logger_smoother(formatLogName("measurement_smooter_log", ".bin")); // create a logger instance for diagnostics
 
 MeasurementHandler::MeasurementHandler(const std::string path_to_configs):
     _oldest_time(0),
@@ -150,17 +141,14 @@ void MeasurementHandler::_doSmoothing(const ImuData& new_measurement) {
         }
 
         // add to queue of ready-to-process measurements
-        diag_log_smoother << "\nSmoothed Measurement: \n" 
-                        << _smoothed_measurement.matrix_form_measurement.transpose() 
-                        << "\nat time: " 
-                        << _smoothed_measurement.measurement_time 
-                        << std::endl;
+        log_vector_out(diag_logger_smoother, _smoothed_measurement.matrix_form_measurement, LoggedVectorType::ImuSmoothed);
         _smoothed_measurements.push(_smoothed_measurement);
     } 
     else {
         // the sliding window won't slow down the measurement dt
         // to maintain this for all time, return the unsmoothed measurements
         // until we have smoothed measurements to give
+        log_vector_out(diag_logger_smoother, new_measurement.matrix_form_measurement, LoggedVectorType::ImuSmoothed);
         _smoothed_measurements.push(new_measurement);
     } 
 
@@ -196,12 +184,6 @@ int MeasurementHandler::openMeasurementStream(std::string path_to_measurements_f
       while (std::getline(ss, value, ',')) { // Parse CSV by commas
         row.push_back(value);
       }
-      
-      // TMP print outputs
-      for (const auto& elem : row) {
-        std::cout << elem << " ";
-      }
-      std::cout << std::endl;
   
       // check for a complete 6 elements and convert to doubles
       if (row.size() != 7) {
@@ -255,9 +237,9 @@ int MeasurementHandler::openMeasurementStream(std::string path_to_measurements_f
 
       // push into queue
       imu_measurements.updateFromDoubles();  // ensure the matrix form is populated before pushing
-      std::cout << "Pushing IMU measurement: " 
-                << imu_measurements.matrix_form_measurement.head(3).transpose() 
-                << " at time: " << imu_measurements.measurement_time << std::endl;
+
+      // add into diag log
+      log_vector_out(diag_logger_smoother, imu_measurements.matrix_form_measurement, LoggedVectorType::ImuRaw);      
       pushData(imu_measurements);
     }
   
