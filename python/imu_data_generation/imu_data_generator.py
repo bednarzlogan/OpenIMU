@@ -1,6 +1,12 @@
-import numpy as np
+from typing import Tuple
+
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.animation import FuncAnimation
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
+from matplotlib.patches import Circle
+from scipy.interpolate import CubicSpline
 
 # ----- parameters -----
 m            = 5.0       # robot mass (kg)
@@ -33,34 +39,77 @@ state = {
 int_ev  = 0.0
 int_ew  = 0.0
 
-# simple example path: list of (x,y) waypoints
-path = [(0,0), (5,0), (5,5), (0,5), (0,0)]
-
 # store look‑ahead points for trace
 pursuit_xs, pursuit_ys = [], []
 
+
+def smooth_path(path, num_points=200):
+    """
+    take a list of (x,y) waypoints and return a smoothed path
+    of length num_points using a natural (or periodic) cubic spline.
+    """
+    pts = np.array(path)               # shape (N,2)
+    n  = len(pts)
+
+    # parameterize original points by u in [0,1]
+    u  = np.linspace(0, 1, n)
+
+    # build splines for x(u) and y(u)
+    # use 'periodic' if your path loops; else leave bc_type default
+    cs_x = CubicSpline(u, pts[:,0], bc_type='not-a-knot')
+    cs_y = CubicSpline(u, pts[:,1], bc_type='not-a-knot')
+
+    # sample a finer, smooth curve
+    uf     = np.linspace(0, 1, num_points)
+    smooth = list(zip(cs_x(uf), cs_y(uf)))
+    return smooth
+
+
 def find_lookahead_point(path, state, Ld, last_idx):
+    # pull the state info and pack it into an array
     x, y = state["x"], state["y"]
-    P = np.array([x, y])
+    grid_position = np.array([x, y])
+
+    # check the next path point using last indx
     for i in range(last_idx, len(path)-1):
-        A = np.array(path[i])
-        B = np.array(path[i+1])
-        d = B - A
-        f = A - P
+        # find the points that intersect the route segment
+        segment_start = np.array(path[i])
+        segment_end = np.array(path[i+1]) 
+        path_segment = segment_end - segment_start
+        cur_offset = segment_start - grid_position
 
-        a = np.dot(d, d)
-        b = 2 * np.dot(d, f)
-        c = np.dot(f, f) - Ld**2
+        # point along a path segment can be described via
+        # X(t) = A + t * (B - A); 0 <= t <= 1 
+        # where A is segment_start and B is segment_end
+        # we're searching for the points where norm2(X(t) - [x; y]) = Ld**2
 
+        # solution is in quadratic form
+        a = np.dot(path_segment, path_segment)
+        b = 2 * np.dot(path_segment, cur_offset)
+        c = np.dot(cur_offset, cur_offset) - Ld**2
+
+        # solve the quadratic formula, checking for no solution
         disc = b*b - 4*a*c
         if disc < 0:
             continue
         sqrt_disc = np.sqrt(disc)
-        for t in sorted([(-b + sqrt_disc)/(2*a), (-b - sqrt_disc)/(2*a)]):
+
+        # find the closer intersection
+        candidates = []
+        for t in [(-b + sqrt_disc) / (2 * a), (-b - sqrt_disc) / (2 * a)]:
             if 0 <= t <= 1:
-                return A + t*d, i
-    # if no intersection, return last point
+                point = segment_start + t * path_segment
+                xb, _ = to_body_frame(point, state)
+                if xb > 0:  # point is in front of robot
+                    candidates.append((xb, point, i))
+
+        if candidates:
+            # pick the candidate that's most forward in body x direction
+            _, best_point, best_i = max(candidates, key=lambda tup: tup[0])
+            return best_point, best_i
+
     return np.array(path[-1]), last_idx
+
 
 def to_body_frame(pt, state):
     # transform global point pt into robot body frame
@@ -72,78 +121,116 @@ def to_body_frame(pt, state):
     yb = s*dx + c*dy
     return xb, yb
 
-def update(frame):
-    global int_ev, int_ew, last_idx
 
-    # 1) pure‑pursuit → find look‑ahead
-    goal_pt, last_idx = find_lookahead_point(path, state, Ld, last_idx)
+def setup_plot() -> Tuple[Figure, Axes, Circle]:
+    # ----- plotting setup -----
+    plot_tuple = plt.subplots(figsize=(8,8))
+    fig: Figure = plot_tuple[0]
+    ax: Axes = plot_tuple[1]
 
-    # move the existing circle
-    circle.center = (state["x"], state["y"])
+    ax.set_xlim(-8, 8)
+    ax.set_ylim(-8, 8)
+    ax.set_aspect("equal")
 
-    # record pursuit trace
-    pursuit_xs.append(goal_pt[0])
-    pursuit_ys.append(goal_pt[1])
+    # initial pursuit circle
+    circle = plt.Circle((0,0), Ld, fill=False, color="gray", linestyle="--")
+    ax.add_patch(circle)
 
-    # compute curvature & desired yaw rate
-    xg, yg  = to_body_frame(goal_pt, state)
-    kappa   = 2*yg / (Ld**2)
-    vd      = desired_speed
-    wd      = vd * kappa
+    return fig, ax, circle
 
-    # 2) compute errors & PI → a_cmd, α_cmd
-    ev = vd - state["v"]
-    ew = wd - state["yaw"]
-    int_ev  += ev * dt
-    int_ew  += ew * dt
+def main() -> int:
+    # setup plotting space
+    fig, ax, circle = setup_plot()
 
-    a_cmd   = Kpv*ev + Kiv*int_ev
-    α_cmd   = Kpw*ew + Kiw*int_ew
+    # make figure frame
+    robot_marker, = ax.plot([], [], "ro", markersize=8)
+    path_line,    = ax.plot([], [], "k--", lw=1)
+    pursuit_line, = ax.plot([], [], "b-", lw=1)  # pure pursuit trace
+    goal_marker,  = ax.plot([], [], "gx", markersize=8)  # look‑ahead point
 
-    # 3) dynamics inversion → wheel torques M_L, M_R
-    denom_a = m - 2*Iw/(r**2)
-    denom_w = Ichassis - 2*Iw*(L**2)/(r**2)
+    # make and smooth path
+    path = [(0,0), (5,0), (5,5), (0,5), (0,0)]
+    smooth_path_pts = smooth_path(path, num_points=500)
+    path = smooth_path_pts
 
-    Msum   = r * denom_a * a_cmd
-    Mdif   = r * denom_w * (α_cmd / L)
+    # animate figure
+    def update(frame):
+        global int_ev, int_ew, last_idx
 
-    M_L = (Msum - Mdif) / 2
-    M_R = (Msum + Mdif) / 2
+        # define goal index (last point) and threshold
+        goal_idx = len(path) - 1
+        goal_point = np.array(path[goal_idx])
+        robot_pos = np.array([state["x"], state["y"]])
 
-    # 4) low‑level dynamics → chassis accelerations
-    a    = ((M_L + M_R)/r) / denom_a
-    dotw = (((M_R - M_L)/r)*L) / denom_w
+        # only start checking goal when we're near the end of the path
+        # example: passed 80% of the path
+        progress_ratio = last_idx / goal_idx
 
-    # 5) integrate state (euler in body frame)
-    state["v"]     += a      * dt
-    state["yaw"]   += dotw   * dt
-    state["x"]     += state["v"] * np.cos(state["theta"]) * dt
-    state["y"]     += state["v"] * np.sin(state["theta"]) * dt
-    state["theta"] += state["yaw"]               * dt
+        if progress_ratio > 0.8:
+            dist_to_goal = np.linalg.norm(robot_pos - goal_point)
+            if dist_to_goal < 0.2:
+                print("Reached goal")
+                ani.event_source.stop()
+                return robot_marker, path_line, pursuit_line, goal_marker
 
-    # update plot objects
-    robot_marker.set_data([state["x"]], [state["y"]])
-    path_line.set_data(*zip(*path))
-    pursuit_line.set_data(pursuit_xs, pursuit_ys)
-    goal_marker.set_data([goal_pt[0]], [goal_pt[1]])
-    return robot_marker, path_line, pursuit_line, goal_marker
+        # 1) pure‑pursuit - find look‑ahead
+        goal_pt, last_idx = find_lookahead_point(path, state, Ld, last_idx)
 
-# ----- plotting setup -----
-fig, ax = plt.subplots(figsize=(6,6))
-ax.set_xlim(-1, 6)
-ax.set_ylim(-1, 6)
-ax.set_aspect("equal")
+        # update the look ahead circle
+        circle.center = (state["x"], state["y"])
 
-# initial pursuit circle
-circle = plt.Circle((0,0), Ld, fill=False, color="gray", linestyle="--")
-ax.add_patch(circle)
+        # record pursuit trace for drawing intersection marker
+        pursuit_xs.append(goal_pt[0])
+        pursuit_ys.append(goal_pt[1])
 
-# plot handles
-robot_marker, = ax.plot([], [], "ro", markersize=8)
-path_line,    = ax.plot([], [], "k--", lw=1)
-pursuit_line, = ax.plot([], [], "b-", lw=1)  # pure pursuit trace
-goal_marker,  = ax.plot([], [], "gx", markersize=8)  # look‑ahead point
+        # compute curvature & desired yaw rate
+        xg, yg  = to_body_frame(goal_pt, state)
+        kappa   = 2*yg / (Ld**2)
+        vd      = desired_speed
+        wd      = vd * kappa
 
-ani = FuncAnimation(fig, update, frames=500, interval=50)
-plt.show()
+        # 2) compute errors & PI → a_cmd, α_cmd
+        ev = vd - state["v"]
+        ew = wd - state["yaw"]
+        int_ev  += ev * dt
+        int_ew  += ew * dt
 
+        a_cmd   = Kpv*ev + Kiv*int_ev
+        α_cmd   = Kpw*ew + Kiw*int_ew
+
+        # 3) dynamics inversion → wheel torques M_L, M_R
+        denom_a = m - 2*Iw/(r**2)
+        denom_w = Ichassis - 2*Iw*(L**2)/(r**2)
+
+        Msum   = r * denom_a * a_cmd
+        Mdif   = r * denom_w * (α_cmd / L)
+
+        M_L = (Msum - Mdif) / 2
+        M_R = (Msum + Mdif) / 2
+
+        # 4) low‑level dynamics - chassis accelerations
+        a    = ((M_L + M_R)/r) / denom_a
+        dotw = (((M_R - M_L)/r)*L) / denom_w
+
+        # 5) integrate state (euler in body frame)
+        state["v"]     += a      * dt
+        state["yaw"]   += dotw   * dt
+        state["x"]     += state["v"] * np.cos(state["theta"]) * dt
+        state["y"]     += state["v"] * np.sin(state["theta"]) * dt
+        state["theta"] += state["yaw"]               * dt
+
+        # update plot objects
+        robot_marker.set_data([state["x"]], [state["y"]])
+        path_line.set_data(*zip(*path))
+        pursuit_line.set_data(pursuit_xs, pursuit_ys)
+        goal_marker.set_data([goal_pt[0]], [goal_pt[1]])
+    
+        return robot_marker, path_line, pursuit_line, goal_marker
+    
+    ani = FuncAnimation(fig, update, frames=50, interval=10)
+    plt.show()
+    
+
+if __name__ == "__main__":
+    return_code: int = main()
+    print(f"Program exited with code: {return_code}")
