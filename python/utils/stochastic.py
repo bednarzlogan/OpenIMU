@@ -147,7 +147,7 @@ def FOGMP_accelerometer():
     position_contribution = sp.zeros(3, 3)
 
     # define the velocity contribution
-    velocity_contribution = sp.eye(3, 3)
+    velocity_contribution = sp.zeros(3, 3)
 
     # define the attitude contribution
     attitude_contribution = sp.zeros(3, 3)
@@ -187,7 +187,7 @@ def FOGMP_gyro():
     position_contribution = sp.zeros(3, 3)
 
     # define the velocity contribution
-    velocity_contribution = sp.eye(3, 3)
+    velocity_contribution = sp.zeros(3, 3)
 
     # define the attitude contribution
     attitude_contribution = sp.zeros(3, 3)

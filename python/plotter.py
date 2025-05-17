@@ -15,9 +15,6 @@ ctk.set_default_color_theme("green")  # Options: "blue" (standard), "green", "da
 PAGE_HEIGHT = 900  # Total default page height in pixels
 MIN_SUBPLOT_HEIGHT = PAGE_HEIGHT // 3
 
-# flag for animated marker
-ENABLE_ANIMATION = False
-
 def plot_all_selected_fields(
     file_path: str,
     schema: Dict[str, Any],
@@ -30,18 +27,18 @@ def plot_all_selected_fields(
         print("[!] No fields selected to plot.")
         return
 
-    # we're going to set all fields from a unique message on their own plot
+    # set up vertical stack of subplots for non-3D traces
     fig = sp.make_subplots(
         rows=n_subplots,
         cols=1,
         shared_xaxes=False,
         vertical_spacing=0.08,
-        subplot_titles=[f"Message {msg_id}" for msg_id in selected_fields_by_message]
+        subplot_titles=[f"Message {mid}" for mid in selected_fields_by_message]
     )
 
-    # get the actual log data
+    # parse once
     try:
-        msg_ids_int = [int(mid, 16) for mid in selected_fields_by_message.keys()]
+        msg_ids_int = [int(mid, 16) for mid in selected_fields_by_message]
         frames, log_start_time = lp.parse_log(file_path, msg_ids_int)
     except Exception as e:
         print(f"[!] Failed to parse messages: {e}")
@@ -50,146 +47,82 @@ def plot_all_selected_fields(
     for i, (msg_id_str, fields) in enumerate(selected_fields_by_message.items()):
         row = i + 1
         msg_id = int(msg_id_str, 16)
-
-        if msg_id not in frames:
+        df = frames.get(msg_id, None)
+        if df is None or df.empty:
             print(f"[i] No data found for {msg_id_str}")
             continue
 
-        df = frames[msg_id]
-        if df.empty:
-            print(f"[i] No data found for {msg_id_str}")
-            continue
+        # detect if it's a trajectory message
+        has2d = {"pos_x", "pos_y"}.issubset(fields)
+        has3d = {"pos_x", "pos_y", "pos_z"}.issubset(fields)
 
-        is_trajectory_2d = set(["pos_x", "pos_y"]).issubset(fields)
-        is_trajectory_3d = set(["pos_x", "pos_y", "pos_z"]).issubset(fields)
-
-        if plot_mode in ("trajectory", "auto") and is_trajectory_3d:
-            static_trace = go.Scatter3d(
-                x=df["pos_x"], y=df["pos_y"], z=df["pos_z"],
-                mode="lines", name=f"{msg_id_str} Path"
-            )
-            frames_list = [
-                go.Frame(data=[
-                    static_trace,
-                    go.Scatter3d(
-                        
-                        x=[df["pos_x"].iloc[i]],
-                        y=[df["pos_y"].iloc[i]],
-                        z=[df["pos_z"].iloc[i]],
-                        mode="markers",
-                        marker=dict(size=5, color="red"),
-                        name="Moving Marker",
-                        uid="moving-marker"
-                    )
-                ]) for i in range(len(df))
-            ]
-
-            sliders = [{
-                "steps": [{
-                    "method": "animate",
-                    "args": [[f.name], {"mode": "immediate", "frame": {"duration": 50}, "transition": {"duration": 0}}],
-                    "label": str(i)
-                } for i, f in enumerate(frames_list)],
-                "active": 0
-            }]
-
-            fig3d = go.Figure(
-                data=[static_trace, frames_list[0].data[0]],
-                frames=frames_list
+        # --- 3D static plot ---
+        if plot_mode in ("trajectory", "auto") and has3d:
+            fig3d = go.Figure()
+            fig3d.add_trace(
+                go.Scatter3d(
+                    x=df["pos_x"],
+                    y=df["pos_y"],
+                    z=df["pos_z"],
+                    mode="lines+markers",
+                    name=f"{msg_id_str} 3D Path"
+                )
             )
             fig3d.update_layout(
                 title=f"3D Trajectory — {msg_id_str}",
-                scene=dict(xaxis_title="X", yaxis_title="Y", zaxis_title="Z"),
-                updatemenus=[{
-                    "type": "buttons",
-                    "buttons": [{
-                        "label": "Play",
-                        "method": "animate",
-                        "args": [None, {"frame": {"duration": 50, "redraw": True}, "fromcurrent": True}]
-                    }]
-                }],
-                sliders=sliders
+                scene=dict(
+                    xaxis_title="pos_x",
+                    yaxis_title="pos_y",
+                    zaxis_title="pos_z"
+                )
             )
-            fig3d.write_html(f"animated_trajectory_3d_{msg_id_str}.html")
+            # save and show
+            fig3d.write_html(f"trajectory_3d_{msg_id_str}.html")
             fig3d.show()
             continue
+
+        # --- 2D static plot ---
+        if plot_mode in ("trajectory", "auto") and has2d:
+            fig.add_trace(
+                go.Scatter(
+                    x=df["pos_x"],
+                    y=df["pos_y"],
+                    mode="lines+markers",
+                    name=f"{msg_id_str} XY Path"
+                ),
+                row=row,
+                col=1
+            )
             continue
 
-        elif plot_mode in ("trajectory", "auto") and is_trajectory_2d:
-            if ENABLE_ANIMATION:
-                static_trace = go.Scatter(
-                    x=df["pos_x"], y=df["pos_y"],
-                    mode="lines", name=f"{msg_id_str} Path"
-                )
-                frames_list = [
-                    go.Frame(data=[
-                        static_trace,
-                        go.Scatter(
-                            
-                            x=[df["pos_x"].iloc[i]],
-                            y=[df["pos_y"].iloc[i]],
-                            mode="markers",
-                            marker=dict(size=7, color="red"),
-                            name="Moving Marker",
-                            uid="moving-marker"
-                        )
-                    ]) for i in range(len(df))
-                ]
-
-                fig2d = go.Figure(
-                    data=[static_trace, frames_list[0].data[0]],
-                    frames=frames_list
-                )
-                fig2d.update_layout(
-                    title=f"2D Trajectory — {msg_id_str}",
-                    xaxis_title="pos_x", yaxis_title="pos_y",
-                    updatemenus=[{
-                        "type": "buttons",
-                        "buttons": [{
-                            "label": "Play",
-                            "method": "animate",
-                            "args": [None, {"frame": {"duration": 50, "redraw": True}, "fromcurrent": True}]
-                        }]
-                    }],
-                    sliders=[{
-                        "steps": [{
-                            "method": "animate",
-                            "args": [[f.name], {"mode": "immediate", "frame": {"duration": 50}, "transition": {"duration": 0}}],
-                            "label": str(i)
-                        } for i, f in enumerate(frames_list)],
-                        "active": 0
-                    }]
-                )
-                fig2d.write_html(f"animated_trajectory_2d_{msg_id_str}.html")
-                fig2d.show()
+        # --- numeric fields ---
+        for field in fields:
+            if field not in df.columns:
+                print(f"[!] Field {field} missing in {msg_id_str}")
                 continue
-            else:
-                fig.add_trace(
-                    go.Scatter(
-                        x=df["pos_x"], y=df["pos_y"],
-                        mode="lines+markers", name=f"{msg_id_str} XY Trajectory"
-                    ), row=row, col=1
-                )
-        else:
-            for field in fields:
-                if field not in df.columns:
-                    print(f"[!] Field {field} missing in {msg_id_str}")
-                    continue
-                fig.add_trace(
-                    go.Scatter(
-                        x=df.index, y=df[field],
-                        mode="lines+markers", name=f"{msg_id_str}: {field}"
-                    ), row=row, col=1
-                )
+            fig.add_trace(
+                go.Scatter(
+                    x=df.index,
+                    y=df[field],
+                    mode="lines+markers",
+                    name=f"{msg_id_str}: {field}"
+                ),
+                row=row,
+                col=1
+            )
 
+    # finalize layout
     total_height = max(PAGE_HEIGHT, n_subplots * MIN_SUBPLOT_HEIGHT)
-
     fig.update_layout(
         height=total_height,
-        title_text=f"Diagnostic Log Visualization{f' — {log_start_time}' if log_start_time else ''}",
+        title_text=(
+            f"Diagnostic Log Visualization"
+            + (f" — {log_start_time}" if log_start_time else "")
+        ),
         showlegend=True
     )
     fig.show()
+    
 
 class LogPlotterGUI:
     def __init__(self, root):
@@ -372,25 +305,6 @@ class LogPlotterGUI:
             return "#dcddde"  # Light text for dark mode
         else:
             return "#1a1a1a"  # Dark text for light mode
-    
-    # def check_appearance_mode_change(self, event=None):
-    #     """Check if appearance mode has changed and update listbox colors"""
-    #     current_appearance = ctk.get_appearance_mode()
-    #     if current_appearance != self.current_appearance:
-    #         self.current_appearance = current_appearance
-    #         self.fields_listbox.config(
-    #             bg=self.calculate_listbox_bg_color(),
-    #             fg=self.calculate_listbox_fg_color()
-    #         )
-    
-    # def change_appearance_mode(self, new_appearance_mode):
-    #     """Change the app's appearance mode"""
-    #     ctk.set_appearance_mode(new_appearance_mode)
-    #     # Update listbox colors
-    #     self.fields_listbox.config(
-    #         bg=self.calculate_listbox_bg_color(),
-    #         fg=self.calculate_listbox_fg_color()
-    #     )
 
     def load_log(self):
         file_path = filedialog.askopenfilename(

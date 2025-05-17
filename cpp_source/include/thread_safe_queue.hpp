@@ -3,6 +3,7 @@
 #include <condition_variable>
 #include <mutex>
 #include <queue>
+#include <iostream>
 
 /**
  * @brief A thread-safe queue for inter-thread communication.
@@ -71,6 +72,7 @@ public:
     void wait_and_pop(T& result) {
         std::unique_lock<std::mutex> lock(m_mutex);
         // Wait until the queue is not empty.
+        std::cout << "waiting for measurement" << std::endl;
         m_condVar.wait(lock, [this]{ return !m_queue.empty(); });
         result = m_queue.front();
         m_queue.pop();            

@@ -69,7 +69,7 @@ def main(csv_path: str, params: Params) -> List[np.ndarray]:
             for line in f:
                 # pull apart the measurement
                 parts = line.strip().split(",")
-                t     = float(parts[0]) * 1e-3
+                t     = float(parts[0])
                 gyro  = np.array([float(p) for p in parts[1:4]]) # should already be rad/s
                 accel = np.array([float(p) for p in parts[4:7]]) # should already be in m/s^2
 
@@ -102,7 +102,7 @@ if __name__ == "__main__":
         nominal_dt=0.05
     )
 
-    history = main("t0.csv", params)
+    history = main("generator_test_2025_05_17_18_29_25.csv", params)
 
     # extract X and Y only
     xs = history[:, 0]

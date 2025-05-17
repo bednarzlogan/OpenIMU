@@ -1,4 +1,5 @@
 import sympy as sp
+import numpy as np
 from sympy import sin, cos, tan, sec
 
 # NOTE:: we're defining all these models as though the rotataion
@@ -105,3 +106,24 @@ def eval_dQbe_kronecer():
     nominal_attitude = sp.Matrix([phi_dot, theta_dot, psi_dot])
     kron_coefficient = kronecker_product(sp.eye(3), nominal_attitude.T)
     return (kron_coefficient * dQbe_inv_dE)
+
+# we define some numpy equivalent matrices for UKF testing in python
+# make numpy versions for runtime
+def R_ENU_BODY_np(phi_val, theta_val, psi_val):
+    c_ph, s_ph = np.cos(phi_val), np.sin(phi_val)
+    c_th, s_th = np.cos(theta_val), np.sin(theta_val)
+    c_ps, s_ps = np.cos(psi_val),   np.sin(psi_val)
+    return np.array([
+        [c_th*c_ps,   s_ph*s_th*c_ps - c_ph*s_ps,   c_ph*s_th*c_ps + s_ph*s_ps],
+        [c_th*s_ps,   s_ph*s_th*s_ps + c_ph*c_ps,   c_ph*s_th*s_ps - s_ph*c_ps],
+        [    -s_th,              s_ph*c_th,               c_ph*c_th        ]
+    ])
+
+def Qbe_inv_np(phi_val, theta_val, psi_val):
+    s_ph, c_ph = np.sin(phi_val), np.cos(phi_val)
+    t_th, sec_th = np.tan(theta_val), 1/np.cos(theta_val)
+    return np.array([
+        [1,      s_ph*t_th,      c_ph*t_th],
+        [0,        c_ph,         -s_ph   ],
+        [0,    s_ph*sec_th,   c_ph*sec_th]
+    ])

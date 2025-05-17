@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Tuple
 
 import matplotlib.pyplot as plt
@@ -20,6 +21,7 @@ Ld           = 1.0       # look‑ahead distance for pure pursuit (m)
 dt           = 0.05      # time step (s)
 
 last_idx = 0  # for look‑ahead bookkeeping
+last_timestamp = 0 # populates output log
 
 # pure‑pursuit gains / speeds
 desired_speed  = 0.5     # forward speed along path (m/s)
@@ -41,6 +43,11 @@ int_ew  = 0.0
 
 # store look‑ahead points for trace
 pursuit_xs, pursuit_ys = [], []
+
+# set the target for the log output
+target_log_path: str = f"generator_test_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}.csv"
+with open(target_log_path, 'a') as log:
+    log.write("timestamp, gyro_x, gyro_y, gyro_z, accel_x, accel_y, accel_z\n")
 
 
 def smooth_path(path, num_points=200):
@@ -155,7 +162,7 @@ def main() -> int:
 
     # animate figure
     def update(frame):
-        global int_ev, int_ew, last_idx
+        global int_ev, int_ew, last_idx, last_timestamp
 
         # define goal index (last point) and threshold
         goal_idx = len(path) - 1
@@ -163,7 +170,6 @@ def main() -> int:
         robot_pos = np.array([state["x"], state["y"]])
 
         # only start checking goal when we're near the end of the path
-        # example: passed 80% of the path
         progress_ratio = last_idx / goal_idx
 
         if progress_ratio > 0.8:
@@ -185,30 +191,30 @@ def main() -> int:
 
         # compute curvature & desired yaw rate
         xg, yg  = to_body_frame(goal_pt, state)
-        kappa   = 2*yg / (Ld**2)
+        kappa   = 2*yg / (Ld**2)  # pure pursuit method
         vd      = desired_speed
         wd      = vd * kappa
 
-        # 2) compute errors & PI → a_cmd, α_cmd
+        # compute errors & PI -> a_cmd, alpha_cmd
         ev = vd - state["v"]
         ew = wd - state["yaw"]
         int_ev  += ev * dt
         int_ew  += ew * dt
 
         a_cmd   = Kpv*ev + Kiv*int_ev
-        α_cmd   = Kpw*ew + Kiw*int_ew
+        alpha_cmd   = Kpw*ew + Kiw*int_ew
 
-        # 3) dynamics inversion → wheel torques M_L, M_R
+        # dynamics inversion -> wheel torques M_L, M_R
         denom_a = m - 2*Iw/(r**2)
         denom_w = Ichassis - 2*Iw*(L**2)/(r**2)
 
         Msum   = r * denom_a * a_cmd
-        Mdif   = r * denom_w * (α_cmd / L)
+        Mdif   = r * denom_w * (alpha_cmd / L)
 
         M_L = (Msum - Mdif) / 2
         M_R = (Msum + Mdif) / 2
 
-        # 4) low‑level dynamics - chassis accelerations
+        # low‑level dynamics - chassis accelerations
         a    = ((M_L + M_R)/r) / denom_a
         dotw = (((M_R - M_L)/r)*L) / denom_w
 
@@ -218,6 +224,17 @@ def main() -> int:
         state["x"]     += state["v"] * np.cos(state["theta"]) * dt
         state["y"]     += state["v"] * np.sin(state["theta"]) * dt
         state["theta"] += state["yaw"]               * dt
+
+        # calculate any centripetal acceleration
+        a_lat = state["v"] * state["yaw"]  # centripetal acceleration
+
+        # write info into log target
+        with open(target_log_path, 'a') as log:
+            # format the row as:
+            # timestamp, gyro_x, gyro_y, gyro_z, accel_x, ...
+            row_formatted_str: str = f"{last_timestamp},0,0,{state["yaw"]},{a},{a_lat},0\n"
+            log.write(row_formatted_str)
+            last_timestamp += dt
 
         # update plot objects
         robot_marker.set_data([state["x"]], [state["y"]])

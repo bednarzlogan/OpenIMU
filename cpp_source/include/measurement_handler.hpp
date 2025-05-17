@@ -109,7 +109,7 @@ class MeasurementHandler {
                     diag_logger.logMessage(MSG_ID_DELTA_STATE_UPDATE, 
                                         DataType::Float32, 
                                         0x01, 
-                                        convertVectorForLogging<6>(vec));
+                                        convertVectorForLogging<15>(vec));
                     break;
                 case LoggedVectorType::ImuRaw:
                     diag_logger.logMessage(MSG_ID_RAW_IMU_MEASUREMENT, 

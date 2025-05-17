@@ -1,4 +1,5 @@
 #include "IMU.hpp"
+#include "Eigen/src/Core/Matrix.h"
 #include "IMU_Matrices.hpp"
 
 // for diag_log
@@ -6,10 +7,11 @@
 
 #include <iostream>
 #include <fstream>
+#include <array>
 #include <cmath>
 #include <thread>
 
-Logger diag_logger(formatLogName("IMU_diag_log", ".bin")); // create a logger instance for diagnostics
+Logger diag_logger(formatLogName("logs/IMU_diag_log", ".bin")); // create a logger instance for diagnostics
 
 Config read_configs(std::ifstream& inFile) { 
     Config hold_config;
@@ -173,9 +175,10 @@ void IMU::perform_time_update(ImuData imu_measurements) {
   Eigen::MatrixXd delta_imu_measurements = imu_measurements.matrix_form_measurement - _nominal_measurements.matrix_form_measurement;
 
   // get state space matrices -- TODO we should statically allocate these when we're sure on what model we want
-  Eigen::MatrixXd Phi_k = _state_space_model.eval_phi_k();
-  Eigen::MatrixXd Gam_uk = _state_space_model.eval_gamma_uk();
-  Eigen::MatrixXd Gam_wk = _state_space_model.eval_gamma_wk(); // TODO - actually Q, not the process noise input
+  std::array<Eigen::MatrixXd, 3> dynamic_system = _state_space_model.eval_generated_system(); 
+  Eigen::MatrixXd Phi_k = dynamic_system[0];
+  Eigen::MatrixXd Gam_uk = dynamic_system[1];
+  Eigen::MatrixXd Gam_wk = dynamic_system[2]; // TODO - actually Q, not the process noise input
 
   // update nominal state estimate
   // TODO -- this should actually be formed from the deviation state vector
@@ -192,7 +195,13 @@ void IMU::perform_time_update(ImuData imu_measurements) {
   _nominal_measurements = imu_measurements;  // we'll observe perturbations from this state of the body to contextualize future measurements 
   _solution_time = imu_measurements.measurement_time; // update the solution time to the latest measurement time
 
+  // diag log out for state influence from control input
+  Eigen::MatrixXd state_perturbation = Gam_uk * delta_imu_measurements;
+  std::cout << "TMP debug state perturbation \n" << state_perturbation << "\n" << std::endl;
+
   // log out relevant states
   _measurement_handler->log_vector_out(diag_logger, _nominal_states.matrix_form_states, LoggedVectorType::NominalState);
+  _measurement_handler->log_vector_out(diag_logger, state_perturbation, LoggedVectorType::DeltaStateUpdate);
+  std::cout << "Pushed nominal state" << _nominal_states.matrix_form_states << "\n" <<std::endl;
   return;
 }

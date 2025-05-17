@@ -1,4 +1,5 @@
 #include <chrono>
+#include <cmath>
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <thread>
@@ -13,7 +14,7 @@
 // for diag_log
 using json = nlohmann::json;
 
-Logger diag_logger_smoother(formatLogName("measurement_smooter_log", ".bin")); // create a logger instance for diagnostics
+Logger diag_logger_smoother(formatLogName("logs/measurement_smooter_log", ".bin")); // create a logger instance for diagnostics
 
 MeasurementHandler::MeasurementHandler(const std::string path_to_configs):
     _oldest_time(0),
@@ -212,22 +213,22 @@ int MeasurementHandler::openMeasurementStream(std::string path_to_measurements_f
             imu_measurements.measurement_time = measurement*1e-3;  // timestamps are in msec
             break;
           case 1:
-            imu_measurements.dphix = measurement * M_PI/180;
+            imu_measurements.dphix = measurement;
             break;
           case 2:
-            imu_measurements.dthetay = measurement * M_PI/180;
+            imu_measurements.dthetay = measurement;
             break;
           case 3:
-            imu_measurements.dpsiz = measurement * M_PI/180;
+            imu_measurements.dpsiz = measurement;
             break;
             case 4:
-            imu_measurements.accx = measurement * 9.80665;  // convert g's to m/s^2, assuming the input is in g's (standard for IMU)
+            imu_measurements.accx = measurement;  // convert g's to m/s^2, assuming the input is in g's (standard for IMU)
             break;
           case 5:
-            imu_measurements.accy = measurement * 9.80665;
+            imu_measurements.accy = measurement;
             break;
           case 6:
-            imu_measurements.accz = measurement * 9.80665 - 9.80665; // The imu will read 1g when stationary, so we need to zero it out for the z-axis
+            imu_measurements.accz = measurement - 9.80665; // The imu will read 1g when stationary, so we need to zero it out for the z-axis
             break;
           default:
             __builtin_unreachable();
@@ -237,6 +238,7 @@ int MeasurementHandler::openMeasurementStream(std::string path_to_measurements_f
 
       // push into queue
       imu_measurements.updateFromDoubles();  // ensure the matrix form is populated before pushing
+      std::cout << "Pushing measurement" << imu_measurements.matrix_form_measurement << std::endl;
 
       // add into diag log
       log_vector_out(diag_logger_smoother, imu_measurements.matrix_form_measurement, LoggedVectorType::ImuRaw);      
