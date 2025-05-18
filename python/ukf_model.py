@@ -1,4 +1,5 @@
 # to browse for log file
+import os
 from tkinter import filedialog
 from typing import List
 
@@ -218,24 +219,48 @@ if __name__ == "__main__":
         nominal_dt=0.05
     )
 
-    target_log = filedialog.askopenfilename()
-    history = main(target_log, params)
+    # select the IMU measurement log
+    target_log = filedialog.askopenfilename(title="Select IMU Measurement Log")
 
-    # extract X and Y only
-    xs = history[:, 0]
-    ys = history[:, 1]
+    # try to infer matching ground truth log
+    log_dir, log_file = os.path.split(target_log)
+    base_name = os.path.splitext(log_file)[0]
+    suffix = "_".join(base_name.split("_")[-6:])  # pull timestamp suffix
+    candidate_truth = os.path.join(log_dir, f"ground_truth_{suffix}.csv")
 
-    # plot trajectory in the XY plane
+    if not os.path.exists(candidate_truth):
+        print(f"Could not find matching ground truth file for: {target_log}")
+        candidate_truth = filedialog.askopenfilename(title="Select Ground Truth Log")
+
+    # run the filter
+    history = main(target_log, candidate_truth, params)
+
+    # extract filtered XY
+    xs_est = history[:, 0]
+    ys_est = history[:, 1]
+
+    # load ground truth and extract XY
+    ground_truth = np.loadtxt(candidate_truth, delimiter=",", skiprows=1)
+    xs_gt = ground_truth[:, 1]  # x
+    ys_gt = ground_truth[:, 2]  # y
+
+    # plot estimated and ground truth trajectories
     plt.figure()
-    plt.plot(xs, ys, '-', linewidth=2, label='trajectory')
-    plt.scatter(xs[0], ys[0], color='green', s=50, label='start')
-    plt.scatter(xs[-1], ys[-1], color='red', s=50, label='end')
+    plt.plot(xs_est, ys_est, '-', linewidth=2, label='UKF estimate')
+    plt.plot(xs_gt, ys_gt, '--', linewidth=2, label='Ground truth')
+
+    # mark start and end for each
+    plt.scatter(xs_est[0], ys_est[0], color='green', s=50, label='Start (UKF)')
+    plt.scatter(xs_est[-1], ys_est[-1], color='red', s=50, label='End (UKF)')
+    plt.scatter(xs_gt[0], ys_gt[0], color='lime', marker='x', s=50, label='Start (Truth)')
+    plt.scatter(xs_gt[-1], ys_gt[-1], color='maroon', marker='x', s=50, label='End (Truth)')
 
     plt.xlabel('X [m]')
     plt.ylabel('Y [m]')
-    plt.title('2D IMU Model Trajectory (XY Plane)')
+    plt.title('UKF Estimated Trajectory vs Ground Truth')
     plt.legend()
-    plt.axis('equal')   # keep aspect ratio so distances aren’t distorted
+    plt.axis('equal')
     plt.grid(True)
     plt.show()
+
     print("Program execution finished!")
