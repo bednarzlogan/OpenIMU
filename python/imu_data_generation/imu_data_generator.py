@@ -46,13 +46,21 @@ int_ew  = 0.0
 pursuit_xs, pursuit_ys = [], []
 
 # set the target for the log output
-target_log_name: str = f"generator_test_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}.csv"
+time_now: str = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+target_log_name: str = f"generator_test_{time_now}.csv"
 target_log_path = os.path.join("simulated_logs", target_log_name)
 if not os.path.exists("simulated_logs"):
     os.mkdir("simulated_logs")
-    
+
 with open(target_log_path, 'a') as log:
     log.write("timestamp, gyro_x, gyro_y, gyro_z, accel_x, accel_y, accel_z\n")
+
+# set the ground truth output
+truth_log_name = f"ground_truth_{time_now}.csv"
+ground_truth_target = os.path.join("simulated_logs", truth_log_name)
+
+with open(ground_truth_target, 'w') as log:
+    log.write("timestamp,x,y,z,vx,vy,vz,phi,theta,psi,b_ax,b_ay,b_az,b_gx,b_gy,b_gz\n")
 
 
 def smooth_path(path, num_points=200):
@@ -240,6 +248,32 @@ def main() -> int:
             row_formatted_str: str = f"{last_timestamp},0,0,{state["yaw"]},{a},{a_lat},0\n"
             log.write(row_formatted_str)
             last_timestamp += dt
+
+        with open(ground_truth_target, 'a') as log:
+            # move to ENU and log out 
+            vx = state["v"] * np.cos(state["theta"])
+            vy = state["v"] * np.sin(state["theta"])
+            vz = 0.0
+
+            # assume flat-ground motion — no roll or pitch
+            phi, theta = 0.0, 0.0
+            psi = state["theta"]  # yaw
+
+            # biases not known in truth
+            b_ax = b_ay = b_az = 0.0
+            b_gx = b_gy = b_gz = 0.0
+
+            # formatted as: timestamp, x, y, z, roll, pitch, yaw, etc... see above globals
+            row_truth_str = (
+                f"{last_timestamp}, "
+                f"{state['x']}, {state['y']}, 0, "
+                f"{vx}, {vy}, {vz}, "
+                f"{phi}, {theta}, {psi}, "
+                f"{b_ax}, {b_ay}, {b_az}, "
+                f"{b_gx}, {b_gy}, {b_gz}\n"
+            )
+            
+            log.write(row_truth_str)
 
         # update plot objects
         robot_marker.set_data([state["x"]], [state["y"]])

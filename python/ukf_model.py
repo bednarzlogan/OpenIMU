@@ -62,10 +62,13 @@ class UKF:
             propagated_sigma[i] = rk4_step(self.f_cont, sp, u, dt, params)
 
         # compute predicted mean and covariance
-        mu_pred = np.sum(self.Wm[:, np.newaxis] * propagated_sigma, axis=0)
-
-        P_pred = self.Q.copy()
+        mu_pred = np.zeros(self.n)
         for i in range(2 * self.n + 1):
+            mu_pred += self.Wm[i] * propagated_sigma[i]
+
+        P_pred = self.Q.copy() # covariance update is of the form var(x) + Q
+        for i in range(2 * self.n + 1):
+            # "measure" the covariance based on deviations in the sigma points from the mean
             dx = propagated_sigma[i] - mu_pred
             P_pred += self.Wc[i] * np.outer(dx, dx)
 
@@ -76,7 +79,9 @@ class UKF:
         z_sigma = np.array([h_func(sp) for sp in propagated_sigma])
 
         # predict measurement mean
-        z_pred = np.sum(self.Wm[:, np.newaxis] * z_sigma, axis=0)
+        z_pred = np.zeros(z_sigma.shape[1])
+        for i in range(2 * self.n + 1):
+            z_pred += self.Wm[i] * z_sigma[i]
 
         # compute innovation covariance and cross-covariance
         S = R.copy()
@@ -127,7 +132,7 @@ def rk4_step(f_cont, x, u, dt, params):
     k4 = f_cont(x +     dt*k3,  u, params)
     return x + (dt/6)*(k1 + 2*k2 + 2*k3 + k4)
 
-def main(csv_path: str, params: Params) -> List[np.ndarray]:
+def main(csv_path: str, ground_truth_path: str, params: Params) -> List[np.ndarray]:
     """
     Here, we implement a UKF model for the IMU measurements, which will be ported to 
     C++
@@ -137,13 +142,36 @@ def main(csv_path: str, params: Params) -> List[np.ndarray]:
     # v_dot = R_ENU_BODY * f_b + g_n
     # E_dot = Q_be_inv * omega_ib
 
-    # x_0: [r(3), v(3), E(3), b_a(3), b_g(3)]
-    x = np.zeros(15)
+    # book-keeping! 
     state_history: List[np.ndarray] = []
     prev_time = None
 
+    # basic config params for now
+    Q = np.eye(15) * 1e-3  # process noise
+
+    # dummy sensor noise and basic model
+    pos_std = 1.0
+    vel_std = 0.1
+    R = np.diag([pos_std**2] * 3 + [vel_std**2] * 3)
+    def h_func(x):
+        return x[0:6]  # extract [position (3), velocity (3)]
+
+
+    # define the UKF and initial conditions
+    ukf = UKF(n=15, f_cont=f_cont, Q=Q)
+
+    # Initialize state and covariance
+    mu = np.zeros(15)
+    P = np.eye(15) * 0.1
+
+    ground_truth_data: List[str] = []
+    with open(ground_truth_path, 'r') as t_log:
+        # read in data except header
+        ground_truth_data: List[str] =  t_log.readlines()[1:]  # may get out of hand for large logs
+
     # open the parsing look using a generator
     try:
+        line_number: int = 0
         with open(csv_path, 'r') as f:
             next(f)  # skip the header
             for line in f:
@@ -161,13 +189,21 @@ def main(csv_path: str, params: Params) -> List[np.ndarray]:
                 else:
                     dt = t - prev_time
                 prev_time = t
-                
+
+                # get truth data
+                truth_data: List[str] = ground_truth_data[line_number].strip().split(",")
+                z_true = np.array([float(datum) for datum in truth_data[1:7]]) # position and velocity states
+                z = z_true + np.random.multivariate_normal(np.zeros(6), R)
+
                 # make the continuous time state matrix using the known points
                 # and propagate state using rk4 method
-                x = rk4_step(f_cont=f_cont, x=x, u=u, dt=dt, params=params)
+                mu, P, sigma_pts = ukf.predict(mu, P, u=u, dt=dt, params=params, rk4_step=rk4_step)
+                mu, P = ukf.update(mu, P, sigma_pts, z=z, h_func=h_func, R=R)
 
                 # add to state history for analysis
-                state_history.append(x.copy())          
+                state_history.append(mu.copy())
+                line_number += 1
+       
     except Exception as e:
         print(f"Got an exception parsing log: {e}")
 
