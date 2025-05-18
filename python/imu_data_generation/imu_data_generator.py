@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 from typing import Tuple
 
@@ -45,7 +46,11 @@ int_ew  = 0.0
 pursuit_xs, pursuit_ys = [], []
 
 # set the target for the log output
-target_log_path: str = f"generator_test_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}.csv"
+target_log_name: str = f"generator_test_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}.csv"
+target_log_path = os.path.join("simulated_logs", target_log_name)
+if not os.path.exists("simulated_logs"):
+    os.mkdir("simulated_logs")
+    
 with open(target_log_path, 'a') as log:
     log.write("timestamp, gyro_x, gyro_y, gyro_z, accel_x, accel_y, accel_z\n")
 

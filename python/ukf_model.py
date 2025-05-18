@@ -1,7 +1,12 @@
-from utils.rotation_matrices import R_ENU_BODY_np, Qbe_inv_np 
-import numpy as np
+# to browse for log file
+from tkinter import filedialog
 from typing import List
+
 import matplotlib.pyplot as plt
+import numpy as np
+from scipy.linalg import cholesky
+from utils.rotation_matrices import Qbe_inv_np, R_ENU_BODY_np
+
 
 class Params:
     def __init__(self, 
@@ -13,6 +18,81 @@ class Params:
         self.tau_a = tau_a
         self.tau_g = tau_g
         self.nominal_dt = nominal_dt
+    
+class UKF:
+    def __init__(self, n, f_cont, Q, alpha=1e-3, beta=2, kappa=0):
+        self.n = n  # state dimension
+        self.f_cont = f_cont  # continuous-time dynamics function
+        self.Q = Q  # process noise covariance matrix
+
+        # UKF scaling parameters
+        self.alpha = alpha
+        self.beta = beta
+        self.kappa = kappa
+        self.lambda_ = alpha**2 * (n + kappa) - n
+        self.gamma = np.sqrt(n + self.lambda_)
+
+        # sigma point weights
+        self.Wm = np.full(2 * n + 1, 0.5 / (n + self.lambda_))
+        self.Wc = np.copy(self.Wm)
+        self.Wm[0] = self.lambda_ / (n + self.lambda_)
+        self.Wc[0] = self.Wm[0] + (1 - alpha**2 + beta)
+
+    def generate_sigma_points(self, mu, P):
+        S = cholesky((self.n + self.lambda_) * P)
+
+        # set the minimum number of sigma points
+        sigma_points = np.zeros((2 * self.n + 1, self.n)) 
+        sigma_points[0] = mu  # mean
+
+        # place sigma points from optimal sample spread
+        for i in range(self.n):
+            sigma_points[i + 1] = mu + S[i]
+            sigma_points[self.n + i + 1] = mu - S[i]
+        return sigma_points
+
+    def predict(self, mu, P, u, dt, params, rk4_step):
+        # use the nomlinear dynamics to propagate the sigma points into predicted
+        # states
+        sigma_points = self.generate_sigma_points(mu, P)
+        propagated_sigma = np.zeros_like(sigma_points)
+
+        # propagate each sigma point through the nonlinear dynamics using rk4
+        for i, sp in enumerate(sigma_points):
+            propagated_sigma[i] = rk4_step(self.f_cont, sp, u, dt, params)
+
+        # compute predicted mean and covariance
+        mu_pred = np.sum(self.Wm[:, np.newaxis] * propagated_sigma, axis=0)
+
+        P_pred = self.Q.copy()
+        for i in range(2 * self.n + 1):
+            dx = propagated_sigma[i] - mu_pred
+            P_pred += self.Wc[i] * np.outer(dx, dx)
+
+        return mu_pred, P_pred, propagated_sigma
+
+    def update(self, mu_pred, P_pred, propagated_sigma, z, h_func, R):
+        # apply measurement model to predicted sigma points
+        z_sigma = np.array([h_func(sp) for sp in propagated_sigma])
+
+        # predict measurement mean
+        z_pred = np.sum(self.Wm[:, np.newaxis] * z_sigma, axis=0)
+
+        # compute innovation covariance and cross-covariance
+        S = R.copy()
+        P_xz = np.zeros((self.n, z.shape[0]))
+        for i in range(2 * self.n + 1):
+            dz = z_sigma[i] - z_pred
+            dx = propagated_sigma[i] - mu_pred
+            S += self.Wc[i] * np.outer(dz, dz)
+            P_xz += self.Wc[i] * np.outer(dx, dz)
+
+        # Kalman gain and update
+        K = P_xz @ np.linalg.inv(S)
+        mu = mu_pred + K @ (z - z_pred)
+        P = P_pred - K @ S @ K.T
+
+        return mu, P
 
 def f_cont(x: np.ndarray, u: np.ndarray, params: Params) -> np.ndarray:
     # unpack state
@@ -102,7 +182,8 @@ if __name__ == "__main__":
         nominal_dt=0.05
     )
 
-    history = main("generator_test_2025_05_17_18_29_25.csv", params)
+    target_log = filedialog.askopenfilename()
+    history = main(target_log, params)
 
     # extract X and Y only
     xs = history[:, 0]
@@ -112,7 +193,7 @@ if __name__ == "__main__":
     plt.figure()
     plt.plot(xs, ys, '-', linewidth=2, label='trajectory')
     plt.scatter(xs[0], ys[0], color='green', s=50, label='start')
-    plt.scatter(xs[-1], ys[-1], color='red',   s=50, label='end')
+    plt.scatter(xs[-1], ys[-1], color='red', s=50, label='end')
 
     plt.xlabel('X [m]')
     plt.ylabel('Y [m]')
@@ -121,3 +202,4 @@ if __name__ == "__main__":
     plt.axis('equal')   # keep aspect ratio so distances aren’t distorted
     plt.grid(True)
     plt.show()
+    print("Program execution finished!")
