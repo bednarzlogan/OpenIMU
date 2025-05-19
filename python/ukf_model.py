@@ -244,23 +244,48 @@ if __name__ == "__main__":
     xs_gt = ground_truth[:, 1]  # x
     ys_gt = ground_truth[:, 2]  # y
 
-    # plot estimated and ground truth trajectories
-    plt.figure()
-    plt.plot(xs_est, ys_est, '-', linewidth=2, label='UKF estimate')
-    plt.plot(xs_gt, ys_gt, '--', linewidth=2, label='Ground truth')
+    # make RMSE info
+    # Extract position components
+    x_est_pos = history[:, 0:3]
+    x_gt_pos = ground_truth[:, 1:4]  # x, y, z
 
-    # mark start and end for each
-    plt.scatter(xs_est[0], ys_est[0], color='green', s=50, label='Start (UKF)')
-    plt.scatter(xs_est[-1], ys_est[-1], color='red', s=50, label='End (UKF)')
-    plt.scatter(xs_gt[0], ys_gt[0], color='lime', marker='x', s=50, label='Start (Truth)')
-    plt.scatter(xs_gt[-1], ys_gt[-1], color='maroon', marker='x', s=50, label='End (Truth)')
+    # Compute RMSE per component (vectorized)
+    rmse = np.sqrt((x_est_pos - x_gt_pos) ** 2)
 
-    plt.xlabel('X [m]')
-    plt.ylabel('Y [m]')
-    plt.title('UKF Estimated Trajectory vs Ground Truth')
-    plt.legend()
-    plt.axis('equal')
-    plt.grid(True)
+    # Time vector for x-axis (use timestamps from ground truth)
+    timestamps = ground_truth[:, 0]
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), gridspec_kw={'height_ratios': [3, 1]})
+    fig.suptitle('UKF Trajectory and RMSE')
+
+    # --- top: Trajectory plot ---
+    ax1.plot(xs_est, ys_est, '-', linewidth=2, label='UKF estimate')
+    ax1.plot(xs_gt, ys_gt, '--', linewidth=2, label='Ground truth')
+
+    ax1.scatter(xs_est[0], ys_est[0], color='green', s=50, label='Start (UKF)')
+    ax1.scatter(xs_est[-1], ys_est[-1], color='red', s=50, label='End (UKF)')
+    ax1.scatter(xs_gt[0], ys_gt[0], color='lime', marker='x', s=50, label='Start (Truth)')
+    ax1.scatter(xs_gt[-1], ys_gt[-1], color='maroon', marker='x', s=50, label='End (Truth)')
+
+    ax1.set_xlabel('X [m]')
+    ax1.set_ylabel('Y [m]')
+    ax1.set_title('Trajectory (XY Plane)')
+    ax1.axis('equal')
+    ax1.grid(True)
+    ax1.legend()
+
+    # --- bottom: RMSE plot ---
+    ax2.plot(timestamps, rmse[:, 0], label='X RMSE [m]')
+    ax2.plot(timestamps, rmse[:, 1], label='Y RMSE [m]')
+    ax2.plot(timestamps, rmse[:, 2], label='Z RMSE [m]')
+
+    ax2.set_xlabel('Time [s]')
+    ax2.set_ylabel('RMSE [m]')
+    ax2.set_title('Position RMSE Over Time')
+    ax2.grid(True)
+    ax2.legend()
+
+    plt.tight_layout()
     plt.show()
 
     print("Program execution finished!")
