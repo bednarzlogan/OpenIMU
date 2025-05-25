@@ -1,12 +1,13 @@
 # to browse for log file
 import os
 from tkinter import filedialog
-from typing import List
+from typing import List, Union 
 
 import matplotlib.pyplot as plt
 import numpy as np
+import sympy
 from scipy.linalg import cholesky
-from utils.rotation_matrices import Qbe_inv_np, R_ENU_BODY_np
+from utils.rotation_matrices import Qbe_inv_np, R_ENU_BODY_np, get_sympy_tf_mats
 
 
 class Params:
@@ -100,7 +101,10 @@ class UKF:
 
         return mu, P
 
-def f_cont(x: np.ndarray, u: np.ndarray, params: Params) -> np.ndarray:
+def f_cont(x: Union[np.ndarray, sympy.Matrix], 
+           u: Union[np.ndarray, sympy.Matrix], 
+           params: Params, 
+           codegen_mode=False) -> Union[np.ndarray, sympy.Matrix]:
     # unpack state
     _    = x[0:3]
     v    = x[3:6]
@@ -108,22 +112,33 @@ def f_cont(x: np.ndarray, u: np.ndarray, params: Params) -> np.ndarray:
     b_a  = x[9:12]
     b_g  = x[12:15]
 
+    if codegen_mode:
+        R, Q = get_sympy_tf_mats(x)
+    else:
+        # rotation and mapping matrices, evaluated at E
+        R = R_ENU_BODY_np(*E)      # 3×3
+        Q = Qbe_inv_np(*E)        # 3×3
+
     # unpack input
     omega_ib = u[0:3]      # body‐frame angular rates
     f_b      = u[3:6]      # specific‐force measurements
 
-    # rotation and mapping matrices, evaluated at E
-    R = R_ENU_BODY_np(*E)      # 3×3
-    Q = Qbe_inv_np(*E)        # 3×3
-
     # true dynamics
-    r_dot    = v
-    v_dot    = R @ (f_b - b_a) + params.g_n
-    E_dot    = Q @ (omega_ib - b_g)
-    b_a_dot  = -1/params.tau_a * b_a
-    b_g_dot  = -1/params.tau_g * b_g
+    if codegen_mode:
+        r_dot    = sympy.Matrix(v)
+        v_dot    = R @ (sympy.Matrix(f_b) - sympy.Matrix(b_a)) - params['g_n']
+        E_dot    = Q @ (sympy.Matrix(omega_ib) - sympy.Matrix(b_g))
+        b_a_dot  = -1 / params['tau_a'] * sympy.Matrix(b_a)
+        b_g_dot  = -1 / params['tau_g'] * sympy.Matrix(b_g)
+        return sympy.Matrix.vstack(r_dot, v_dot, E_dot, b_a_dot, b_g_dot)
+    else:
+        r_dot    = v
+        v_dot    = R @ (f_b - b_a) + params.g_n
+        E_dot    = Q @ (omega_ib - b_g)
+        b_a_dot  = -1/params.tau_a * b_a
+        b_g_dot  = -1/params.tau_g * b_g
 
-    return np.hstack([r_dot, v_dot, E_dot, b_a_dot, b_g_dot])
+        return np.hstack([r_dot, v_dot, E_dot, b_a_dot, b_g_dot])
 
 def rk4_step(f_cont, x, u, dt, params):
     # classical fourth‐order Runge–Kutta method for discrete model

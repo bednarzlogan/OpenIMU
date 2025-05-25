@@ -2,6 +2,8 @@ import sympy as sp
 import numpy as np
 from sympy import sin, cos, tan, sec
 
+from typing import Tuple
+
 # NOTE:: we're defining all these models as though the rotataion
 #        of earth is irrelevant
 # NOTE:: to add these, we just undergo an additive process for these terms,
@@ -106,6 +108,23 @@ def eval_dQbe_kronecer():
     nominal_attitude = sp.Matrix([phi_dot, theta_dot, psi_dot])
     kron_coefficient = kronecker_product(sp.eye(3), nominal_attitude.T)
     return (kron_coefficient * dQbe_inv_dE)
+
+
+# used to generate symbolic matrices for codegen in UKF
+def get_sympy_tf_mats(x: np.ndarray) -> Tuple[sp.Matrix, sp.Matrix]:
+    phi, theta, psi = x[6], x[7], x[8]
+
+    trig_subs = {
+        c_ph: sp.cos(phi), s_ph: sp.sin(phi),
+        c_th: sp.cos(theta), s_th: sp.sin(theta),
+        c_ps: sp.cos(psi), s_ps: sp.sin(psi),
+        t_th: sp.tan(theta), sec_th: 1 / sp.cos(theta)
+    }
+
+    R = R_ENU_BODY.subs(trig_subs)
+    Q = Qbe_inv.subs(trig_subs)
+    return R, Q
+
 
 # we define some numpy equivalent matrices for UKF testing in python
 # make numpy versions for runtime
