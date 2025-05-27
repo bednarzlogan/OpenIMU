@@ -1,11 +1,9 @@
-#ifndef IMU_HPP // prevents multiple inclusions 
-#define IMU_HPP
+#pragma once
 
 #include "IMU_Matrices.hpp"
 #include "measurement_handler.hpp"
 
 #include <string>
-#include <queue>
 
 #include <Eigen/Dense>
 #include <nlohmann/json.hpp>
@@ -78,5 +76,3 @@ class IMU {
             std::queue<ImuData>& _imu_measurements_queue;
         #endif
 };
-
-#endif
