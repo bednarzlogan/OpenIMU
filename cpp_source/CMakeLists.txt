@@ -17,6 +17,7 @@ add_executable(
   IMU_model
   src/main.cpp 
   src/IMU.cpp
+  src/UKF.cpp
   src/measurement_handler.cpp
 )
 

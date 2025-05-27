@@ -55,6 +55,7 @@ def emit_f_cont_to_cpp(f_cont: Callable[..., sp.Matrix], params: dict, file: Tex
     file.write("using InputVec = Eigen::Matrix<double, M, 1>;\n")
     file.write("using CovMat   = Eigen::Matrix<double, N, N>;\n")
     file.write("using MeasVec  = Eigen::Matrix<double, M, 1>;\n")
+    file.write("using ControlInput  = Eigen::Matrix<double, M, 1>;\n")
     file.write("using SigmaPointArray = std::array<StateVec, NumSigma>;\n\n")
 
     # Parameter struct
@@ -99,6 +100,17 @@ def emit_f_cont_to_cpp(f_cont: Callable[..., sp.Matrix], params: dict, file: Tex
     file.write("\n    return dx;\n")
     file.write("}\n")
 
+    # RK4 function
+    file.write("\n")
+    file.write("inline StateVec rk4_step(const StateVec& x, const ControlInput& u, double dt, const UKFParams& params) {\n")
+    file.write("    StateVec k1 = f_cont(x, u, params.tau_a, params.tau_g, params.gx, params.gy, params.gz);\n")
+    file.write("    StateVec k2 = f_cont(x + 0.5 * dt * k1, u, params.tau_a, params.tau_g, params.gx, params.gy, params.gz);\n")
+    file.write("    StateVec k3 = f_cont(x + 0.5 * dt * k2, u, params.tau_a, params.tau_g, params.gx, params.gy, params.gz);\n")
+    file.write("    StateVec k4 = f_cont(x + dt * k3, u, params.tau_a, params.tau_g, params.gx, params.gy, params.gz);\n")
+    file.write("    return x + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4);\n")
+    file.write("}\n")
+
+
 
 def main() -> None:
     # define symbolic parameters
@@ -109,7 +121,7 @@ def main() -> None:
     }
 
     # Write out dynamics
-    full_file_path = "generated_f_cont.hpp"
+    full_file_path = "cpp_source/include/ukf_defs.hpp"
     with open(full_file_path, 'w') as file:
         emit_f_cont_to_cpp(ukf.f_cont, params, file)
 
