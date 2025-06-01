@@ -43,7 +43,6 @@ class IMU {
         // perform time update
         void perform_time_update(ImuData imu_measurements);
 
-        // TODO - make something for a << operator for terminal viewing
         bool get_measurements(ImuData new_data);
 
     private:

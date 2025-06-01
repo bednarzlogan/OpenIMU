@@ -11,18 +11,6 @@
 #include "logger.hpp" 
 #include "logger_conversions.hpp" // fconverts Eigen objects to arrays
 
-// used for logging states of interest
-constexpr uint16_t MSG_ID_NOMINAL_STATE = 0x01;
-constexpr uint16_t MSG_ID_DELTA_STATE_UPDATE = 0x02;
-constexpr uint16_t MSG_ID_RAW_IMU_MEASUREMENT = 0x03;
-constexpr uint16_t MSG_ID_SMOOTHED_IMU_MEASUREMENT = 0x04;
-
-enum class LoggedVectorType : uint16_t {
-    NominalState = MSG_ID_NOMINAL_STATE,
-    DeltaStateUpdate = MSG_ID_DELTA_STATE_UPDATE,
-    ImuRaw = MSG_ID_RAW_IMU_MEASUREMENT, 
-    ImuSmoothed =  MSG_ID_SMOOTHED_IMU_MEASUREMENT
-};
 
 inline std::string formatLogName(std::string base_name, std::string extension = ".txt") {
     auto time = std::time(nullptr);  // returns current time, null tells it we aren't assigning to a timer

@@ -26,7 +26,6 @@ enum class DataType : uint8_t {
 };
 
 
-
 // ---- Packed Log Header Definition ----
 #pragma pack(push, 1)
 /**

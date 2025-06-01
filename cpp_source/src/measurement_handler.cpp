@@ -210,7 +210,7 @@ int MeasurementHandler::openMeasurementStream(std::string path_to_measurements_f
   
         switch (count) {
           case 0:
-            imu_measurements.measurement_time = measurement*1e-3;  // timestamps are in msec
+            imu_measurements.measurement_time = measurement;  // timestamps are in msec
             break;
           case 1:
             imu_measurements.dphix = measurement;
@@ -238,7 +238,6 @@ int MeasurementHandler::openMeasurementStream(std::string path_to_measurements_f
 
       // push into queue
       imu_measurements.updateFromDoubles();  // ensure the matrix form is populated before pushing
-      std::cout << "Pushing measurement" << imu_measurements.matrix_form_measurement << std::endl;
 
       // add into diag log
       log_vector_out(diag_logger_smoother, imu_measurements.matrix_form_measurement, LoggedVectorType::ImuRaw);      

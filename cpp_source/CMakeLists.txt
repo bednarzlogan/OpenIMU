@@ -15,10 +15,10 @@ add_compile_definitions(SIM_MODE)
 # add exec target 
 add_executable(
   IMU_model
-  src/main.cpp 
-  src/IMU.cpp
+  src/main.cpp
+  src/measurement_model.cpp
+  src/measurement_handler.cpp 
   src/UKF.cpp
-  src/measurement_handler.cpp
 )
 
 # add include target_include_directories

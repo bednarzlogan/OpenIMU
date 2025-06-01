@@ -6,18 +6,27 @@
 
 constexpr int N = 15;
 constexpr int M = 6;
+constexpr int Z = 6;
 constexpr int NumSigma = 2 * N + 1;
 
 using StateVec = Eigen::Matrix<double, N, 1>;
 using InputVec = Eigen::Matrix<double, M, 1>;
 using CovMat   = Eigen::Matrix<double, N, N>;
-using MeasVec  = Eigen::Matrix<double, M, 1>;
+using MeasVec  = Eigen::Matrix<double, Z, 1>;
+using MeasCov  = Eigen::Matrix<double, Z, Z>;
 using ControlInput  = Eigen::Matrix<double, M, 1>;
 using SigmaPointArray = std::array<StateVec, NumSigma>;
 
+struct Observable {
+    double timestamp;
+    MeasVec observation;
+    MeasCov R;
+};
+
 struct UKFParams {
-    double tau_a, tau_g;
-    double gx, gy, gz;
+    double tau_a, tau_g;       // time constants for gyro/accel FOGMP
+    double sig_a, sig_g;       // variance on AWGN on FOGMP process
+    double gx, gy, gz;         // gravity config
 };
 
 inline StateVec f_cont(
