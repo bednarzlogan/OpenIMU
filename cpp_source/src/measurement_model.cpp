@@ -1,6 +1,7 @@
 #include <array>
 #include <fstream>
 #include <random>
+#include <iostream>
 
 #include "measurement_model.hpp"
 #include "ukf_defs.hpp"
@@ -65,7 +66,7 @@ bool TruthHandler::parse_line(const std::string& line, Observable& measurement) 
     // interact with the stringstream to grab each word between delimiters
     uint8_t i = 0;
     while (std::getline(ss, value, ',')) {
-        if (i >= Z + 1) {
+        if (i >= N + 1) { // full state vector is logged in csvs
             std::cerr << "Too many elements in CSV row!" << std::endl;
             return false;
         }
@@ -78,14 +79,14 @@ bool TruthHandler::parse_line(const std::string& line, Observable& measurement) 
     }
 
     // catch too few elements
-    if (i != Z + 1) return false;
+    if (i != N + 1) return false;
 
     measurement.timestamp = measurement_parts[0];  // log format spec
-    for (int j = 0; j < Z; ++j)
+    for (int j = 0; j < Z; ++j) // switch to Z to pull only the first Z states
         measurement.observation(j) = measurement_parts[j + 1];  // skip timestamp
 
     // TMP until verified
-    std::cout << "Parsed truth row at t=" << measurement.timestamp << ", z_truth = " << measurement.observation.transpose() << "\n";
+    // std::cout << "Parsed truth row at t=" << measurement.timestamp << ", z_truth = " << measurement.observation.transpose() << "\n";
 
     return true;
 }

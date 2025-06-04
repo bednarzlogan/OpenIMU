@@ -12,6 +12,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # set sim mode on
 add_compile_definitions(SIM_MODE)
 
+# debug compilation
+set(CMAKE_BUILD_TYPE Debug)
+
 # add exec target 
 add_executable(
   IMU_model

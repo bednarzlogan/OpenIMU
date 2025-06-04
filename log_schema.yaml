@@ -51,6 +51,7 @@
     - dphi
     - dtheta
     - dpsi
+
 "0x04":
   name: Smoothed IMU Measurement
   type: float32
@@ -62,3 +63,39 @@
     - dphi
     - dtheta
     - dpsi
+
+"0x05":
+  name: Ground Truth Measurement
+  type: float32
+  length: 6
+  fields:
+    - gt_pos_x
+    - gt_pos_y
+    - gt_pos_z
+    - gt_vel_x
+    - gt_vel_y
+    - gt_vel_z
+
+"0x06":
+  name: Estimated Measurement (z_pred)
+  type: float32
+  length: 6
+  fields:
+    - zpred_pos_x
+    - zpred_pos_y
+    - zpred_pos_z
+    - zpred_vel_x
+    - zpred_vel_y
+    - zpred_vel_z
+    
+"0x07":
+  name: Measurement Residual (z - z_pred)
+  type: float32
+  length: 6
+  fields:
+    - res_pos_x
+    - res_pos_y
+    - res_pos_z
+    - res_vel_x
+    - res_vel_y
+    - res_vel_z

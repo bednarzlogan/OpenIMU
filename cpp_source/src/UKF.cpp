@@ -7,6 +7,7 @@
 #include "estimator_interface.hpp"
 #include "UKF.hpp"
 #include "ukf_defs.hpp"
+#include "safe_cholesky.hpp"
 
 using json = nlohmann::json;
 
@@ -94,8 +95,9 @@ UKF::UKF(const std::string& configs_path) {
     diag_logger = std::make_unique<Logger>(formatLogName("logs/UKF_diag_log", ".bin"));
 
     // calculate scaling params
-    _lambda = pow(_alpha, 2) * (N + _kappa) - N;
-    _gamma = pow(N + _lambda, 0.5);
+    double lambda_raw = _alpha * _alpha * (N + _kappa) - N;
+    _lambda = std::max(lambda_raw, -0.95 * N);
+    _gamma = std::sqrt(N + _lambda);
 
     // weights for sigma point mean and covariance
     _Wm.setConstant(0.5 / (N + _lambda));
@@ -107,6 +109,8 @@ UKF::UKF(const std::string& configs_path) {
     // TMP PROCESS NOISE
     _Q.setIdentity();
     _Q *= 1e-3;
+
+    ukf_log() << "[UKF] _lambda = " << _lambda << ", _gamma = " << _gamma << "\n";
 }
 
 void UKF::start_filter() {
@@ -136,15 +140,19 @@ void UKF::read_measurements() {
         ControlInput imu_reading = imu_measurements.matrix_form_measurement;
         double dt = abs(_solution_time - imu_measurements.measurement_time);
 
+        std::cout << "Got a control input\n" << imu_reading.transpose() << "\n" << std::endl;
         predict(imu_reading, dt);
 
         // Attempt to fetch a truth measurement close to the IMU time
         Observable external_measurement;
         if (_ext_measuremment_handler->getNextTruth(external_measurement)) {
-            if (std::abs(external_measurement.timestamp - imu_measurements.measurement_time) < 1e-3) {
+            // std::cout << "Got dt: " << abs(external_measurement.timestamp - imu_measurements.measurement_time) << std::endl;
+            if (std::abs(external_measurement.timestamp - imu_measurements.measurement_time) < 500e-3) {
                 update(external_measurement.observation, external_measurement.R);
             }
         }
+
+        //std::cout << "Got an observable\n" << external_measurement.observation.transpose() << "\n\n" <<std::endl;
 
         _solution_time = imu_measurements.measurement_time;
     }
@@ -171,23 +179,42 @@ void UKF::generate_sigma_points(
     const StateVec& mu,
     const CovMat& P,
     SigmaPointArray& sigma_points) {
-    // compute scaled square root of covariance
-    Eigen::LLT<CovMat> llt((N + _lambda) * P);
-    CovMat S = llt.matrixL(); // cholesky decomp via llt
 
-    // first point is always the mean
+    // tmp logs
+    ukf_log() << "Initial covariance diag: " << P.diagonal().transpose() << "\n";
+    ukf_log() << "Initial state mu: " << mu.transpose() << "\n";
+
+    // scale the covariance matrix
+    CovMat scaled_P = (N + _lambda) * P;
+
+    // ensure the matrix is symmetric and positive definite
+    // the function will also perform the cholesky decomp after these steps are taken
+    CovMat S;
+    bool success = safe_cholesky(scaled_P, S);
+
+    if (!success) {
+        std::cerr << "[UKF] ERROR: Failed to compute Cholesky decomposition despite stabilization attempts.\n";
+        std::cerr << "[UKF] Matrix was:\n" << scaled_P << "\n";
+        throw std::runtime_error("UKF: Cholesky decomposition failed");
+    }
+
+    // assign first sigma point
     sigma_points[0] = mu;
 
-    // setup points on mirrored sides of the mean to capture
-    // distribution
+    // generate symmetric sigma points
     for (uint8_t i = 0; i < N; ++i) {
-        sigma_points[i + 1]     = mu + _gamma * S.col(i);
-        sigma_points[N + i + 1] = mu - _gamma * S.col(i);
+        sigma_points[i + 1]       = mu + _gamma * S.col(i);
+        sigma_points[N + i + 1]   = mu - _gamma * S.col(i);
     }
+
+    ukf_log() << "[UKF] Raw P:\n" << P << "\n";
+    ukf_log() << "[UKF] Scaled P:\n" << scaled_P << "\n";
+
 }
 
 void UKF::predict(
     const ControlInput& u, double dt) {
+
     // use the nomlinear dynamics to propagate the sigma points into predicted states
     SigmaPointArray sigma_points;
     generate_sigma_points(_x, _P, sigma_points); // get new sigma points
@@ -217,6 +244,8 @@ void UKF::predict(
     _x = mu_pred;
     _P = P_pred;
     _sigma_points = propagated_sigmas;
+
+    // std::cout << "TMP: state is\n" << _x.transpose() << "\n\n" <<std::endl; 
 
     // log out the new, calculated state
     log_vector_out(*diag_logger, _x, LoggedVectorType::NominalState);

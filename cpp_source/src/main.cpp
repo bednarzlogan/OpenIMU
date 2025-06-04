@@ -34,6 +34,7 @@ int main() {
     StateVec initial_state;
     CovMat initial_covariance;
 
+    initial_covariance.setZero();
     initial_covariance.diagonal() << 
     0.5, 0.5, 0.5,   // positions
     0.1, 0.1, 0.1,   // velocities
@@ -41,7 +42,7 @@ int main() {
     1e-4, 1e-4, 1e-4,   // accelerometer biases
     1e-4, 1e-4, 1e-4;   // gyro biases
 
-    initial_state = Eigen::Matrix<double, N, 1>::Zero();  
+    initial_state = 1e-3 * Eigen::Matrix<double, N, 1>::Ones();  
 
     // create IMU instance
     std::unique_ptr<Estimator> estimator;

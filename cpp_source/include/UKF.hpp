@@ -11,7 +11,6 @@
 #include "measurement_model.hpp"
 
 
-
 // using N and M for adaptive sizing depending on model without heap allocations
 class UKF : public Estimator {
 public:

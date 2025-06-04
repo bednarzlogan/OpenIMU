@@ -180,7 +180,12 @@ int MeasurementHandler::openMeasurementStream(std::string path_to_measurements_f
       std::stringstream ss(line);
       std::vector<std::string> row;
       std::string value;
-  
+
+      // skip header lines
+      if (line.rfind("timestamp", 0) == 0) {
+          continue;
+      }
+
       // interact with the stringstream to grab each word between delimiters
       while (std::getline(ss, value, ',')) { // Parse CSV by commas
         row.push_back(value);
@@ -198,6 +203,7 @@ int MeasurementHandler::openMeasurementStream(std::string path_to_measurements_f
   
       // kind of lengthy, but I'm doing this to be explicit about what is what in assigning members in the 
       // state space model
+      bool valid_line = true;
       for (const auto& elem : row) {
         double measurement;
   
@@ -205,39 +211,31 @@ int MeasurementHandler::openMeasurementStream(std::string path_to_measurements_f
         try {
           measurement = std::stod(elem);
         } catch (const std::invalid_argument& e) {
+          valid_line = false;
           break;
         }
   
         switch (count) {
-          case 0:
-            imu_measurements.measurement_time = measurement;  // timestamps are in msec
-            break;
-          case 1:
-            imu_measurements.dphix = measurement;
-            break;
-          case 2:
-            imu_measurements.dthetay = measurement;
-            break;
-          case 3:
-            imu_measurements.dpsiz = measurement;
-            break;
-            case 4:
-            imu_measurements.accx = measurement;  // convert g's to m/s^2, assuming the input is in g's (standard for IMU)
-            break;
-          case 5:
-            imu_measurements.accy = measurement;
-            break;
-          case 6:
-            imu_measurements.accz = measurement - 9.80665; // The imu will read 1g when stationary, so we need to zero it out for the z-axis
-            break;
-          default:
-            __builtin_unreachable();
+          case 0: imu_measurements.measurement_time = measurement; break;
+          case 1: imu_measurements.dphix = measurement; break;
+          case 2: imu_measurements.dthetay = measurement; break;
+          case 3: imu_measurements.dpsiz = measurement; break;
+          case 4: imu_measurements.accx = measurement; break;
+          case 5: imu_measurements.accy = measurement; break;
+          case 6: imu_measurements.accz = measurement; break;
+          default: __builtin_unreachable();
         }
         count++;
       }
 
+      if (!valid_line) {
+          std::cerr << "Skipped malformed line.\n";
+          continue;
+      }
+      
       // push into queue
       imu_measurements.updateFromDoubles();  // ensure the matrix form is populated before pushing
+      // std::cout << "parsed measurement\n" <<  imu_measurements.matrix_form_measurement.transpose() << "\n" <<std::endl;
 
       // add into diag log
       log_vector_out(diag_logger_smoother, imu_measurements.matrix_form_measurement, LoggedVectorType::ImuRaw);      
