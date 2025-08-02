@@ -4,7 +4,6 @@ from typing import Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.animation import FuncAnimation
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.patches import Circle
@@ -142,14 +141,26 @@ def to_body_frame(pt, state):
     return xb, yb
 
 
-def setup_plot() -> Tuple[Figure, Axes, Circle]:
+def setup_plot(path) -> Tuple[Figure, Axes, Circle]:
     # ----- plotting setup -----
-    plot_tuple = plt.subplots(figsize=(8,8))
+    # get x-y lims
+    east_west = [p[0] for p in path]
+    north_south = [p[1] for p in path]
+
+    x_min, x_max = min(east_west), max(east_west)
+    y_min, y_max = min(north_south), max(north_south)
+
+    # is it square, taller, wider? we want some visual feedback of that
+    x_span = x_max - x_min
+    y_span = y_max - y_min
+    aspect_ratio = x_span / y_span if y_span != 0 else 1.0
+
+    plot_tuple = plt.subplots(figsize=(8, 8 / aspect_ratio))
     fig: Figure = plot_tuple[0]
     ax: Axes = plot_tuple[1]
 
-    ax.set_xlim(-8, 8)
-    ax.set_ylim(-8, 8)
+    ax.set_xlim(x_min*1.1, x_max*1.1)
+    ax.set_ylim(y_min*1.1, y_max*1.1)
     ax.set_aspect("equal")
 
     # initial pursuit circle
@@ -158,9 +169,24 @@ def setup_plot() -> Tuple[Figure, Axes, Circle]:
 
     return fig, ax, circle
 
-def main() -> int:
+def main(path_to_waypoints: str) -> int:
+    # make and smooth path
+    if path_to_waypoints:
+        try:
+            with open(path_to_waypoints, 'r') as f:
+                lines = [line.strip() for line in f if line.strip()]
+                path = [tuple(map(float, line.split(',')[:2])) for line in lines]
+        except Exception as e:
+            print(f"Failed to load waypoints from {path_to_waypoints}: {e}")
+            return 1
+    else:
+        path = [(0,0), (5,0), (5,5), (0,5), (0,0)]
+
+    smooth_path_pts = smooth_path(path, num_points=len(path) * 3)
+    path = smooth_path_pts
+
     # setup plotting space
-    fig, ax, circle = setup_plot()
+    fig, ax, circle = setup_plot(path)
 
     # make figure frame
     robot_marker, = ax.plot([], [], "ro", markersize=8)
@@ -168,29 +194,20 @@ def main() -> int:
     pursuit_line, = ax.plot([], [], "b-", lw=1)  # pure pursuit trace
     goal_marker,  = ax.plot([], [], "gx", markersize=8)  # look‑ahead point
 
-    # make and smooth path
-    path = [(0,0), (5,0), (5,5), (0,5), (0,0)]
-    smooth_path_pts = smooth_path(path, num_points=500)
-    path = smooth_path_pts
-
-    # animate figure
-    def update(frame):
-        global int_ev, int_ew, last_idx, last_timestamp
-
-        # define goal index (last point) and threshold
+    def goal_reached() -> bool:
         goal_idx = len(path) - 1
         goal_point = np.array(path[goal_idx])
         robot_pos = np.array([state["x"], state["y"]])
-
-        # only start checking goal when we're near the end of the path
         progress_ratio = last_idx / goal_idx
 
         if progress_ratio > 0.8:
             dist_to_goal = np.linalg.norm(robot_pos - goal_point)
-            if dist_to_goal < 0.2:
-                print("Reached goal")
-                ani.event_source.stop()
-                return robot_marker, path_line, pursuit_line, goal_marker
+            return dist_to_goal < 0.2
+        return False
+
+    # step through the simulation
+    def update() -> None:
+        global int_ev, int_ew, last_idx, last_timestamp
 
         # 1) pure‑pursuit - find look‑ahead
         goal_pt, last_idx = find_lookahead_point(path, state, Ld, last_idx)
@@ -275,18 +292,16 @@ def main() -> int:
             
             log.write(row_truth_str)
 
-        # update plot objects
+        # update plot objects -- deprecated? was only used for animation
         robot_marker.set_data([state["x"]], [state["y"]])
         path_line.set_data(*zip(*path))
         pursuit_line.set_data(pursuit_xs, pursuit_ys)
         goal_marker.set_data([goal_pt[0]], [goal_pt[1]])
     
-        return robot_marker, path_line, pursuit_line, goal_marker
-    
-    ani = FuncAnimation(fig, update, frames=50, interval=10)
-    plt.show()
-    
+    while not goal_reached():
+        update()
 
 if __name__ == "__main__":
-    return_code: int = main()
+    path_to_data = "waypoints_20250618_210836.csv"
+    return_code: int = main(path_to_data)
     print(f"Program exited with code: {return_code}")

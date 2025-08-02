@@ -26,7 +26,9 @@ void noise_data(Observable& original_measurement) {
 }
 
 // generic constructor to kickoff
-TruthHandler::TruthHandler(): _running(true) {}
+TruthHandler::TruthHandler(std::shared_ptr<Logger> diag_logger): 
+_running(true) 
+{_diag_logger = diag_logger;}
 
 TruthHandler::~TruthHandler() {
     _running = false;

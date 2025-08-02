@@ -116,7 +116,7 @@ def plot_all_selected_fields(
     fig.update_layout(
         height=total_height,
         title_text=(
-            f"Diagnostic Log Visualization"
+            "Diagnostic Log Visualization"
             + (f" — {log_start_time}" if log_start_time else "")
         ),
         showlegend=True

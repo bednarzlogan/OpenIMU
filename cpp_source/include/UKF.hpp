@@ -72,7 +72,7 @@ private:
     double _solution_time;  // last solution time
 
     // logging object
-    std::unique_ptr<Logger> diag_logger;
+    std::shared_ptr<Logger> diag_logger;
 
     void generate_sigma_points(const StateVec& mu, const CovMat& P, SigmaPointArray& sigma_points);
 };

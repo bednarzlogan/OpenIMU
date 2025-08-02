@@ -27,12 +27,14 @@ add_executable(
 # add include target_include_directories
 target_include_directories(IMU_model PRIVATE include)
 
-# we'll require Eigen for this 
+# we'll require Eigen and boost for this 
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+find_package(Boost REQUIRED)
 
-# Link the project to Eigen 
+# Link the project to Eigen and Boost
 target_include_directories(IMU_model PRIVATE ${EIGEN3_INCLUDE_DIRS})
 target_compile_definitions(IMU_model PRIVATE ${EIGEN3_DEFINITIONS})
+target_include_directories(IMU_model PRIVATE ${Boost_INCLUDE_DIRS})
 
 # link POSIX for std thread 
 target_link_libraries(IMU_model PRIVATE pthread)

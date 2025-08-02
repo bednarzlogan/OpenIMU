@@ -1,8 +1,9 @@
 #include <string>
 #include <atomic>
 
-#include "ukf_defs.hpp"
+#include "logger.hpp"
 #include "thread_safe_queue.hpp"
+#include "ukf_defs.hpp"
 
 static constexpr double kPosStd = 1.0;
 static constexpr double kVelStd = 0.1;
@@ -21,13 +22,14 @@ inline static MeasCov get_simulated_measurement_noise() {
 
 class TruthHandler {
 public:
-    TruthHandler();
+    TruthHandler(std::shared_ptr<Logger> diag_logger);
     ~TruthHandler();
 
     void startStream(const std::string& path);
     bool getNextTruth(Observable& out);
 private:
     ThreadQueue<Observable> _observables_queue;
+    std::shared_ptr<Logger> _diag_logger;
     std::atomic<bool> _running;
 
     bool parse_line(const std::string& line, Observable& measurement);

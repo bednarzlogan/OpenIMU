@@ -2,8 +2,8 @@
 
 #include <condition_variable>
 #include <mutex>
-#include <queue>
-// #include <iostream>
+#include <boost/circular_buffer.hpp>
+
 
 /**
  * @brief A thread-safe queue for inter-thread communication.
@@ -19,7 +19,14 @@ public:
     /**
      * @brief Constructs a new ThreadQueue object.
      */
-    ThreadQueue() = default;
+    ThreadQueue(size_t maxSize = 0, bool dropOldest = true) {
+        // Default constructor initializes an empty queue.
+        // Optionally, you can set a maximum size or other parameters here.
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_maxSize = maxSize;
+        m_dropOldest = dropOldest;
+        m_queue.set_capacity(maxSize);   
+    };
 
     /**
      * @brief Destroys the ThreadQueue object.
@@ -37,9 +44,14 @@ public:
     void push(const T& value) {
         // Lock is acquired when lock_guard is constructed.
         std::lock_guard<std::mutex> lock(m_mutex);
-        m_queue.push(value);
+
+
+        if (!m_dropOldest) {
+            m_condVar.wait(lock, [this] { return !m_queue.full(); });
+        }
+        m_queue.push_back(value);
         m_condVar.notify_one();
-        // Lock is automatically released when lock goes out of scope.
+        // lock is automatically released when lock goes out of scope.
     }
 
     /**
@@ -71,11 +83,26 @@ public:
      */
     void wait_and_pop(T& result) {
         std::unique_lock<std::mutex> lock(m_mutex);
+
         // Wait until the queue is not empty.
-        // std::cout << "waiting for measurement" << std::endl;
         m_condVar.wait(lock, [this]{ return !m_queue.empty(); });
         result = m_queue.front();
         m_queue.pop();            
+    }
+
+    /**
+    * @brief Attempts to peek at the front element without popping.
+    *
+    * @param result Reference to store the front element if available.
+    * @return true if the queue was non-empty and result was populated; false otherwise.
+    */
+    bool front(T& result) const {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (m_queue.empty()) {
+            return false;
+        }
+        result = m_queue.front();  // will copy/move
+        return true;
     }
 
     /**
@@ -95,12 +122,13 @@ public:
      */
     void clear() {
         std::lock_guard<std::mutex> lock(m_mutex);
-        std::queue<T> empty;
-        std::swap(m_queue, empty);
+        m_queue.clear();
     }
 
 private:
-    std::queue<T> m_queue;             ///< Underlying standard queue holding the data.
+    boost::circular_buffer<T> m_queue;   ///< Underlying circular queue for holding the data.
     mutable std::mutex m_mutex;          ///< Mutex to protect the queue.
     std::condition_variable m_condVar;   ///< Condition variable for managing waits.
+    size_t m_maxSize = 0;                ///< Max size of the queue, 0 for unlimited size
+    bool m_dropOldest = false;           ///< If true, drop the oldest element when the queue is full
 };

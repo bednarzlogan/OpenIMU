@@ -88,11 +88,11 @@ UKF::UKF(const std::string& configs_path) {
     // setup measurement handler
     _measurement_handler = std::make_unique<MeasurementHandler>(configs_path);
 
-    // ground truth getter
-    _ext_measuremment_handler = std::make_unique<TruthHandler>();
-
     // create a logger instance for diagnostics
-    diag_logger = std::make_unique<Logger>(formatLogName("logs/UKF_diag_log", ".bin"));
+    diag_logger = std::make_shared<Logger>(formatLogName("logs/UKF_diag_log", ".bin"));
+
+    // ground truth getter
+    _ext_measuremment_handler = std::make_unique<TruthHandler>(diag_logger);
 
     // calculate scaling params
     double lambda_raw = _alpha * _alpha * (N + _kappa) - N;

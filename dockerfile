@@ -11,6 +11,7 @@ RUN apt-get update && \
         cmake \
         git \
         libeigen3-dev \
+        libboost-dev \
         nlohmann-json3-dev \
         clangd-10 \
         gdb \
