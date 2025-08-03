@@ -44,24 +44,21 @@ private:
      float _sample_rate;  // rate of the fastest sensor 
 
      // we require that the following keys are present in the configuration file
-     std::array<std::string, 3> required_keys = {
+     std::array<std::string, 4> required_keys = {
          "sample_rate", 
          "imu_data_path", 
-         "measurement_file_path"
+         "measurement_file_path",
+         "max_measurements"
      };
 
-     // structures for storing parsed measurements before queuing
-     // and associated size limits
-     static const uint16_t _max_measurements = 1000;  // max size for IMU queue
-
      // the reader will dump everything into these as fast as possible
-     ThreadQueue<ImuData> _imu_measurements;  // array to store IMU measurements
-     ThreadQueue<Observable> _observables;  // array to store observable measurements
+     std::unique_ptr<ThreadQueue<ImuData>> _imu_measurements;  // array to store IMU measurements
+     std::unique_ptr<ThreadQueue<Observable>> _observables;  // array to store observable measurements
 
      // the timer will serve measurements from the above into here at the sensor sample rates
-     ThreadQueue<ImuData> _imu_queue;  // queue for IMU measurements
-     ThreadQueue<Observable> _observable_queue;  // Queue for observable measurement
-     
+     std::unique_ptr<ThreadQueue<ImuData>> _imu_queue;  // queue for IMU measurements
+     std::unique_ptr<ThreadQueue<Observable>> _observable_queue;  // Queue for observable measurement
+
      double _current_time;  // current time in the simulation
      bool _running;  // flag to indicate if the simulation is running
 

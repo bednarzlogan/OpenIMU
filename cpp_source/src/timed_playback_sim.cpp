@@ -52,6 +52,19 @@ void TimedPlaybackSim::load_configurations() {
     _sample_rate = j["sample_rate"];
     _imu_data_path = j["imu_data_path"];
     _measurement_file_path = j["measurement_file_path"];
+    uint16_t max_measurements = j["max_measurements"];
+
+    // initialize queues
+
+    // these will hold the preprocessed measurements and are only meant to by used in simulations, so 
+    // they can be as large as needed
+    _imu_measurements = std::make_unique<ThreadQueue<ImuData>>();
+    _observables = std::make_unique<ThreadQueue<Observable>>();
+
+    // these are the queues that simulate the real-time measurement streams
+    _imu_queue = std::make_unique<ThreadQueue<ImuData>>(max_measurements);
+    _observable_queue = std::make_unique<ThreadQueue<Observable>>(max_measurements);
+
 }
 
 TimedPlaybackSim::TimedPlaybackSim(const std::string& config_path) 
@@ -94,7 +107,7 @@ void TimedPlaybackSim::parse_line(const std::string& line, const std::string& so
         }
         imu_measurement.measurement_time = measurement_parts[0];
         imu_measurement.updateFromMatrix();
-        _imu_queue.push(imu_measurement);
+        _imu_queue->push(imu_measurement);
     }
     else if (source == "gnss") {
         while (std::getline(ss, value, ',')) {
@@ -118,7 +131,7 @@ void TimedPlaybackSim::parse_line(const std::string& line, const std::string& so
         for (int j = 0; j < Z; ++j) {
             measurement.R(j, j) = gnss_measurement_parts[j + 1 + Z];
         }
-        _observable_queue.push(measurement);
+        _observable_queue->push(measurement);
     }
 }
 
@@ -165,8 +178,8 @@ void TimedPlaybackSim::queue_setter_timer(ThreadQueue<ImuData>& imu_queue, Threa
         Observable observable_measurement;
 
         // check for available measurements and populate if available
-        bool imu_available = _imu_measurements.try_pop(imu_measurement);
-        bool observable_available = _observables.try_pop(observable_measurement);
+        bool imu_available = _imu_measurements->try_pop(imu_measurement);
+        bool observable_available = _observables->try_pop(observable_measurement);
 
         if (sim_start_time < 0.0) {
             // If we haven't set the sim start time, set it to the first measurement we have
