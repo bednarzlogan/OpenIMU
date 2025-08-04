@@ -8,6 +8,7 @@
 #include "UKF.hpp"
 #include "ukf_defs.hpp"
 #include "safe_cholesky.hpp"
+#include "timed_playback_sim.hpp"
 
 using json = nlohmann::json;
 
@@ -123,42 +124,51 @@ void UKF::read_measurements() {
     // we may maintain this structure as a while true statement where we continuously
     // read from a buffer of SPI-read IMU measurements
 
-    // open the measurement stream via a handler in the background
-    std::thread parser_thread(&MeasurementHandler::openMeasurementStream, 
-                            _measurement_handler.get(), 
-                            _measurement_file_path);
+    // TMP refactor for bringing in RT simulation
+    std::string rt_config = "rt_playback_conf.json";
+    TimedPlaybackSim playback_sim(rt_config);
 
-    // external measurements reader
-    std::thread sim_measurements_thread(&TruthHandler::startStream,
-                                        _ext_measuremment_handler.get(),
-                                        _ground_truth_path);
+    // open a thread where the RT playback sim will run
+    std::thread playback_thread(&TimedPlaybackSim::start_simulation,
+                                &playback_sim);
 
-    // set imu measurement for the time update
-    ImuData imu_measurements;
-    while (_measurement_handler->getSmoothedData(imu_measurements)) {
-        // format into generic control input
-        ControlInput imu_reading = imu_measurements.matrix_form_measurement;
-        double dt = abs(_solution_time - imu_measurements.measurement_time);
+    // on a timer, try-pop from the measurement queues
+    while (true) {
+        MeasurementType measurement_type;
+        ImuData imu_measurement;
+        Observable observable_measurement;
 
-        std::cout << "Got a control input\n" << imu_reading.transpose() << "\n" << std::endl;
-        predict(imu_reading, dt);
-
-        // Attempt to fetch a truth measurement close to the IMU time
-        Observable external_measurement;
-        if (_ext_measuremment_handler->getNextTruth(external_measurement)) {
-            // std::cout << "Got dt: " << abs(external_measurement.timestamp - imu_measurements.measurement_time) << std::endl;
-            if (std::abs(external_measurement.timestamp - imu_measurements.measurement_time) < 500e-3) {
-                update(external_measurement.observation, external_measurement.R);
-            }
+        // check if the playback sim is still running
+        if (!playback_sim.is_running()) {
+            std::cout << "Playback simulation has ended." << std::endl;
+            break;
         }
 
-        //std::cout << "Got an observable\n" << external_measurement.observation.transpose() << "\n\n" <<std::endl;
+        // get the next observation
+        measurement_type = playback_sim.get_next_observation(imu_measurement, observable_measurement);
+        if (measurement_type == NO_MEASUREMENT) {
+            // wait for data to arrive
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            continue;
+        }
 
-        _solution_time = imu_measurements.measurement_time;
+        // process the IMU measurement
+        if (measurement_type == IMU) {
+            ControlInput imu_reading = imu_measurement.matrix_form_measurement;
+            double dt = abs(_solution_time - imu_measurement.measurement_time);
+            predict(imu_reading, dt);
+
+            _solution_time = imu_measurement.measurement_time;  // update solution time
+        }
+        else if (measurement_type == GNSS) {
+            update(observable_measurement.observation, observable_measurement.R);
+
+            _solution_time = observable_measurement.timestamp;  // update solution time
+        }
+
     }
-
-    parser_thread.join(); 
-    sim_measurements_thread.join();
+    
+    playback_thread.join();  // wait for playback thread to finish
 }
 
 const StateVec& UKF::get_state() const{

@@ -82,6 +82,8 @@ void TimedPlaybackSim::parse_line(const std::string& line, const std::string& so
     ImuData imu_measurement;
     Observable measurement;
 
+    // skip empty lines and headers
+    if (line.empty()) return;
     if (line.rfind("timestamp", 0) == 0) return;
 
     uint8_t i = 0;
@@ -107,7 +109,7 @@ void TimedPlaybackSim::parse_line(const std::string& line, const std::string& so
         }
         imu_measurement.measurement_time = measurement_parts[0];
         imu_measurement.updateFromMatrix();
-        _imu_queue->push(imu_measurement);
+        _imu_measurements->push(imu_measurement);
     }
     else if (source == "gnss") {
         while (std::getline(ss, value, ',')) {
@@ -131,7 +133,7 @@ void TimedPlaybackSim::parse_line(const std::string& line, const std::string& so
         for (int j = 0; j < Z; ++j) {
             measurement.R(j, j) = gnss_measurement_parts[j + 1 + Z];
         }
-        _observable_queue->push(measurement);
+        _observables->push(measurement);
     }
 }
 
@@ -143,19 +145,14 @@ void TimedPlaybackSim::batcher_thread() {
     std::getline(imu_file, imu_line); // skip header
     std::getline(gnss_file, gnss_line); // skip header
 
-    std::optional<ImuData> next_imu;
-    std::optional<Observable> next_gnss;
-
-    while (std::getline(imu_file, imu_line) || std::getline(gnss_file, gnss_line)) {
-        if (!next_imu && !imu_line.empty()) {
-            std::stringstream ss(imu_line);
+    while (true) {
+        if (!imu_file.eof() && std::getline(imu_file, imu_line))
             parse_line(imu_line, "imu");
-        }
 
-        if (!next_gnss && !gnss_line.empty()) {
-            std::stringstream ss(gnss_line);
+        if (!gnss_file.eof() && std::getline(gnss_file, gnss_line))
             parse_line(gnss_line, "gnss");
-        }
+
+        if (imu_file.eof() && gnss_file.eof()) break;
     }
 }
 
@@ -229,4 +226,27 @@ void TimedPlaybackSim::start_simulation(ThreadQueue<ControlInput>& imu_queue, Th
 
     _running = false;  // stop the simulation
     std::cout << "Simulation stopped." << std::endl;
+}
+
+MeasurementType TimedPlaybackSim::get_next_observation(ImuData& imu_measurement, Observable& observable_measurement) {
+    // this function will try to pop the next IMU and observable measurements from the queues in chronological order
+    // It returns true a measurement is available, false otherwise
+
+    // allocate dummy variables to hold the popped measurements
+    bool imu_avail = _imu_queue->front(imu_measurement);
+    bool observable_avail = _observable_queue->front(observable_measurement);
+
+    // return the older of the two measurements
+    if (imu_avail && observable_avail) {
+        if (imu_measurement.measurement_time <= observable_measurement.timestamp) 
+            return _imu_queue->try_pop(imu_measurement) ? MeasurementType::IMU : MeasurementType::NO_MEASUREMENT;
+        else
+            return _observable_queue->try_pop(observable_measurement) ? MeasurementType::GNSS : MeasurementType::NO_MEASUREMENT;
+    } 
+    else if (imu_avail) 
+        return _imu_queue->try_pop(imu_measurement) ? MeasurementType::IMU : MeasurementType::NO_MEASUREMENT;
+    else if (observable_avail)
+        return _observable_queue->try_pop(observable_measurement) ? MeasurementType::GNSS : MeasurementType::NO_MEASUREMENT;
+
+    return MeasurementType::NO_MEASUREMENT;  // no measurements available
 }

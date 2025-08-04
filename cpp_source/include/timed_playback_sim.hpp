@@ -8,6 +8,12 @@
 #include "ukf_defs.hpp"
 #include "IMU_Matrices.hpp"
 
+enum MeasurementType {
+    IMU = 0,
+    GNSS = 1,
+    NO_MEASUREMENT = 2
+};
+
 /**
  * @brief A playback simulator that serves observations based on the timestamps in
  * the provided measurement files.
@@ -34,7 +40,14 @@
       * 
       * @return The next observation as a string.
       */
-     std::string get_next_observation();
+     MeasurementType get_next_observation(ImuData& imu_measurement, Observable& observable_measurement);
+
+     /**
+      * @brief Gets the running status of the simulator.
+      * 
+      * @return The running status as a boolean.
+      */
+     bool is_running() const {return _running || !_imu_queue->empty() || !_observable_queue->empty();}     
 
 private:
     // configs and string info
