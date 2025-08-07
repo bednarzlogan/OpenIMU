@@ -43,7 +43,7 @@ public:
      */
     void push(const T& value) {
         // Lock is acquired when lock_guard is constructed.
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::unique_lock<std::mutex> lock(m_mutex);
 
 
         if (!m_dropOldest) {
@@ -69,7 +69,7 @@ public:
         if (m_queue.empty())
             return false;
         result = m_queue.front();
-        m_queue.pop();
+        m_queue.pop_front();
         return true;
     }
 
@@ -87,7 +87,7 @@ public:
         // Wait until the queue is not empty.
         m_condVar.wait(lock, [this]{ return !m_queue.empty(); });
         result = m_queue.front();
-        m_queue.pop();            
+        m_queue.pop_front();            
     }
 
     /**

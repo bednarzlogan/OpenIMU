@@ -22,6 +22,7 @@ add_executable(
   src/measurement_model.cpp
   src/measurement_handler.cpp 
   src/UKF.cpp
+  src/timed_playback_sim.cpp
 )
 
 # add include target_include_directories

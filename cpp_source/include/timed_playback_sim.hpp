@@ -33,7 +33,7 @@ enum MeasurementType {
       * @param imu_queue A thread-safe queue containing IMU measurements.
       * @param observable_queue A thread-safe queue for observable measurements.
       */
-     void start_simulation(ThreadQueue<ControlInput>& imu_queue, ThreadQueue<Observable>& observable_queue);
+     void start_simulation();
 
      /**
       * @brief Gets the next observation based on the current time.
@@ -78,6 +78,6 @@ private:
      void load_configurations();  // load configurations from the file
 
      void batcher_thread();
-     void queue_setter_timer(ThreadQueue<ImuData>& imu_queue, ThreadQueue<Observable>& observable_queue);
+     void queue_setter_timer();
      void parse_line(const std::string& line, const std::string& source);
  };

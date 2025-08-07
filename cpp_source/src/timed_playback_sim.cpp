@@ -156,7 +156,7 @@ void TimedPlaybackSim::batcher_thread() {
     }
 }
 
-void TimedPlaybackSim::queue_setter_timer(ThreadQueue<ImuData>& imu_queue, ThreadQueue<Observable>& observable_queue) {
+void TimedPlaybackSim::queue_setter_timer() {
     // This function will set a timer based on the sample rate and push measurements to the respective queues
     // It will check the oldest measurement in the local memory structure and see if the sim time is >= the measurement time
     // If yes, it will push the measurement to the respective queue
@@ -194,12 +194,12 @@ void TimedPlaybackSim::queue_setter_timer(ThreadQueue<ImuData>& imu_queue, Threa
 
         // push IMU measurements whose timestamp is <= sim_now
         while (imu_available && imu_measurement.measurement_time <= sim_now) {
-            imu_queue.push(imu_measurement);
+            _imu_queue->push(imu_measurement);
         }
 
         // Push GNSS observables whose timestamp is <= sim_now
         while (observable_available && observable_measurement.timestamp <= sim_now) {
-            observable_queue.push(observable_measurement);
+            _observable_queue->push(observable_measurement);
         }
 
         std::this_thread::sleep_for(milliseconds(10));  // avoid tight loop
@@ -207,7 +207,7 @@ void TimedPlaybackSim::queue_setter_timer(ThreadQueue<ImuData>& imu_queue, Threa
 }
 
 
-void TimedPlaybackSim::start_simulation(ThreadQueue<ControlInput>& imu_queue, ThreadQueue<Observable>& observable_queue) {
+void TimedPlaybackSim::start_simulation() {
     // The processing loop is like this:
     // 1. Set a timer based on the fastest sensor sample rate
     // 2. Start a thread which will read measurements into a local memory structure while we wait for timer ticks
@@ -218,7 +218,7 @@ void TimedPlaybackSim::start_simulation(ThreadQueue<ControlInput>& imu_queue, Th
     std::thread batcher_thread(&TimedPlaybackSim::batcher_thread, this); 
 
     // start a thread for the timer that will push measurements to the queues
-    std::thread queue_setter_thread(&TimedPlaybackSim::queue_setter_timer, this, std::ref(imu_queue), std::ref(observable_queue));
+    std::thread queue_setter_thread(&TimedPlaybackSim::queue_setter_timer, this);
 
     // wait for user interrupt or internal flag to end
     batcher_thread.join();
