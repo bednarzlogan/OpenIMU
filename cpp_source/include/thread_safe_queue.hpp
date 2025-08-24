@@ -19,7 +19,7 @@ public:
     /**
      * @brief Constructs a new ThreadQueue object.
      */
-    ThreadQueue(size_t maxSize = 0, bool dropOldest = true) {
+    ThreadQueue(size_t maxSize = 1000, bool dropOldest = true) {
         // Default constructor initializes an empty queue.
         // Optionally, you can set a maximum size or other parameters here.
         std::lock_guard<std::mutex> lock(m_mutex);

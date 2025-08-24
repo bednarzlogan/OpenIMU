@@ -2,6 +2,7 @@
 
 #include <string>
 #include <array>
+#include <atomic>
 
 //#include "logger.hpp"
 #include "thread_safe_queue.hpp"
@@ -47,7 +48,7 @@ enum MeasurementType {
       * 
       * @return The running status as a boolean.
       */
-     bool is_running() const {return _running || !_imu_queue->empty() || !_observable_queue->empty();}     
+     bool is_running() const {return _running || !_imu_queue->empty() || !_observable_queue->empty();}  
 
 private:
     // configs and string info
@@ -73,7 +74,8 @@ private:
      std::unique_ptr<ThreadQueue<Observable>> _observable_queue;  // Queue for observable measurement
 
      double _current_time;  // current time in the simulation
-     bool _running;  // flag to indicate if the simulation is running
+     std::atomic<bool> _running{true};  // flag to indicate if the simulation is running
+     std::atomic<bool> _producer_done{false};
 
      void load_configurations();  // load configurations from the file
 

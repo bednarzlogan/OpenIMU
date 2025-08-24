@@ -2,11 +2,13 @@
 #include "IMU_Matrices.hpp"
 #include "ukf_defs.hpp"
 #include <array>
+#include <cstddef>
 #include <nlohmann/json.hpp>
 #include <thread>
 
 using json = nlohmann::json;
 using namespace std::chrono;
+using clk = std::chrono::steady_clock;
 
 
 bool check_key(std::string key, const json& j) {
@@ -62,8 +64,8 @@ void TimedPlaybackSim::load_configurations() {
     _observables = std::make_unique<ThreadQueue<Observable>>();
 
     // these are the queues that simulate the real-time measurement streams
-    _imu_queue = std::make_unique<ThreadQueue<ImuData>>(max_measurements);
-    _observable_queue = std::make_unique<ThreadQueue<Observable>>(max_measurements);
+    _imu_queue = std::make_unique<ThreadQueue<ImuData>>((size_t) max_measurements);
+    _observable_queue = std::make_unique<ThreadQueue<Observable>>((size_t) max_measurements);
 
 }
 
@@ -76,7 +78,6 @@ TimedPlaybackSim::TimedPlaybackSim(const std::string& config_path)
 void TimedPlaybackSim::parse_line(const std::string& line, const std::string& source) {
     std::stringstream ss(line);
     std::string value;
-    std::array<std::string, Z + 1> row;
     std::array<double, Z + 1> measurement_parts;
     std::array<double, 2 * Z + 1> gnss_measurement_parts;
     ImuData imu_measurement;
@@ -89,7 +90,7 @@ void TimedPlaybackSim::parse_line(const std::string& line, const std::string& so
     uint8_t i = 0;
     if (source == "imu") {
         while (std::getline(ss, value, ',')) {
-            if (i >= N + 1) {
+            if (i >= Z + 1) {
                 std::cerr << "Too many elements in IMU CSV row!" << std::endl;
                 return;
             }
@@ -100,11 +101,11 @@ void TimedPlaybackSim::parse_line(const std::string& line, const std::string& so
             }
             i++;
         }
-        if (i != N + 1) return;
+        if (i != (uint8_t) Z + 1) return;
 
         measurement.timestamp = measurement_parts[0];
 
-        for (int j = 0; j < N; ++j) {
+        for (int j = 0; j < Z; ++j) {
             imu_measurement.matrix_form_measurement(j) = measurement_parts[j + 1];
         }
         imu_measurement.measurement_time = measurement_parts[0];
@@ -124,7 +125,7 @@ void TimedPlaybackSim::parse_line(const std::string& line, const std::string& so
             }
             i++;
         }
-        if (i != 2 * Z + 1) return;
+        if (i != (uint8_t) 2 * Z + 1) return;
 
         measurement.timestamp = gnss_measurement_parts[0];
         for (int j = 0; j < Z; ++j) {
@@ -141,19 +142,22 @@ void TimedPlaybackSim::batcher_thread() {
     std::ifstream imu_file(_imu_data_path);
     std::ifstream gnss_file(_measurement_file_path);
 
-    std::string imu_line, gnss_line;
-    std::getline(imu_file, imu_line); // skip header
-    std::getline(gnss_file, gnss_line); // skip header
+    std::string line;
+    std::getline(imu_file, line); // skip header
+    std::getline(gnss_file, line); // skip header
 
-    while (true) {
-        if (!imu_file.eof() && std::getline(imu_file, imu_line))
-            parse_line(imu_line, "imu");
-
-        if (!gnss_file.eof() && std::getline(gnss_file, gnss_line))
-            parse_line(gnss_line, "gnss");
-
-        if (imu_file.eof() && gnss_file.eof()) break;
+    bool imu_done = false, gnss_done = false;
+    while (!imu_done || !gnss_done) {
+        if (!imu_done) {
+            if (std::getline(imu_file, line)) parse_line(line, "imu");
+            else imu_done = true;
+        }
+        if (!gnss_done) {
+            if (std::getline(gnss_file, line)) parse_line(line, "gnss");
+            else gnss_done = true;
+        }
     }
+    _producer_done.store(true, std::memory_order_release);
 }
 
 void TimedPlaybackSim::queue_setter_timer() {
@@ -162,47 +166,78 @@ void TimedPlaybackSim::queue_setter_timer() {
     // If yes, it will push the measurement to the respective queue
     // This function will run in a separate thread
     // Define simulation time reference (starts at time of first measurement)
-
     double sim_start_time = -1.0;
 
-    // System time reference point
-    auto wall_clock_start = high_resolution_clock::now();
+    // system time reference point
+    time_point wall_clock_start = clk::now();
 
     while (_running) {
-        auto now = high_resolution_clock::now();
-        double sim_elapsed = duration<double>(now - wall_clock_start).count();
-        ImuData imu_measurement;
-        Observable observable_measurement;
+        ImuData imu_m;
+        Observable obs_m;
 
         // check for available measurements and populate if available
-        bool imu_available = _imu_measurements->try_pop(imu_measurement);
-        bool observable_available = _observables->try_pop(observable_measurement);
+        bool imu_avail = _imu_measurements->front(imu_m);
+        bool obs_avail = _observables->front(obs_m);
 
         if (sim_start_time < 0.0) {
             // If we haven't set the sim start time, set it to the first measurement we have
-            if (imu_available) {
-                sim_start_time = imu_measurement.measurement_time;
-            } else if (observable_available) {
-                sim_start_time = observable_measurement.timestamp;
-            } else {
-                std::this_thread::sleep_for(milliseconds(10));  // Wait for data to arrive
+            if (!imu_avail && !obs_avail) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
                 continue;
+            }
+            if (imu_avail && obs_avail)
+                sim_start_time = std::min(imu_m.measurement_time, obs_m.timestamp);
+            else if (imu_avail)
+                sim_start_time = imu_m.measurement_time;
+            else
+                sim_start_time = obs_m.timestamp;
+
+            wall_clock_start = clk::now();  // start pacing once we know sim epoch
+        }
+
+        auto now = clk::now();
+        double sim_elapsed = std::chrono::duration<double>(now - wall_clock_start).count();
+        double sim_now = sim_start_time + sim_elapsed;
+        double t_min = std::numeric_limits<double>::infinity();
+
+        // we may have several measurements to push, so drain the queues as much as possible
+        for (;;) {
+            imu_avail = _imu_measurements->front(imu_m);
+            obs_avail = _observables->front(obs_m);
+            if (!imu_avail && !obs_avail) {
+                // if we've got nothing else in the producer queues and we've 
+                // finished reading the files in, we can stop the simulation
+                if (_producer_done.load(std::memory_order_acquire)) 
+                    _running.store(false, std::memory_order_relaxed);
+                break;  // even if not done, nothing to push
+            }
+
+            double next_imu_time = imu_avail ? imu_m.measurement_time : std::numeric_limits<double>::infinity();
+            double next_obs_time = obs_avail ? obs_m.timestamp : std::numeric_limits<double>::infinity();
+
+            t_min = std::min(next_imu_time, next_obs_time);
+            if (t_min > sim_now) break;  // next measurement is in the future
+            
+            // push the next measurement(s)
+            if (imu_avail && next_imu_time <= sim_now) {
+                _imu_measurements->try_pop(imu_m);   // consume the one we just peeked
+                _imu_queue->push(imu_m);               // deliver to live queue
+            }
+            if (obs_avail && next_obs_time <= sim_now) {
+                _observables->try_pop(obs_m);
+                _observable_queue->push(obs_m);
             }
         }
 
-        double sim_now = sim_start_time + sim_elapsed;
+        // check t_min to decide how long to sleep
+        double dt_s = (t_min > sim_now) ? std::min(t_min - sim_now, 0.05) : 0.010; // cap at 50 ms
 
-        // push IMU measurements whose timestamp is <= sim_now
-        while (imu_available && imu_measurement.measurement_time <= sim_now) {
-            _imu_queue->push(imu_measurement);
-        }
-
-        // Push GNSS observables whose timestamp is <= sim_now
-        while (observable_available && observable_measurement.timestamp <= sim_now) {
-            _observable_queue->push(observable_measurement);
-        }
-
-        std::this_thread::sleep_for(milliseconds(10));  // avoid tight loop
+        // we need to handle t_min very close to sim_now by using this_thread::yield
+        // to allow us to re-loop, but allow other threads to run if needed
+        if (dt_s > 0.001) 
+            std::this_thread::sleep_for(std::chrono::duration<double>(dt_s));
+        else 
+            std::this_thread::yield();
     }
 }
 
@@ -223,8 +258,7 @@ void TimedPlaybackSim::start_simulation() {
     // wait for user interrupt or internal flag to end
     batcher_thread.join();
     queue_setter_thread.join();
-
-    _running = false;  // stop the simulation
+    
     std::cout << "Simulation stopped." << std::endl;
 }
 
