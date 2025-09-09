@@ -14,7 +14,7 @@ int main() {
     std::cout << "Loading configs...\n" << std::endl;
 
     // define path to configs (remember that our working dir in runtime is the build folder)
-    std::string config_file_path = "system_constants.json";
+    std::string config_file_path = "conf/system_constants.json";
 
     // load in the system configurations
     std::ifstream inFile(config_file_path);

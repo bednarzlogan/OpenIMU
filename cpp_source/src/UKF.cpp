@@ -125,7 +125,7 @@ void UKF::read_measurements() {
     // read from a buffer of SPI-read IMU measurements
 
     // TMP refactor for bringing in RT simulation
-    const std::string rt_config = "rt_playback_conf.json";
+    const std::string rt_config = "conf/rt_playback_conf.json";
     TimedPlaybackSim playback_sim(rt_config);
 
     // open a thread where the RT playback sim will run
