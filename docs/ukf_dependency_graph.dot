@@ -1,0 +1,40 @@
+// UKF Dependency Graph
+digraph {
+	rankdir=LR
+	main [label="main.cpp
+Entry point
+Initializes UKF"]
+	UKF [label="UKF.hpp / UKF.cpp
+UKF implementation
+Owns state, sigma, update/predict"]
+	Iface [label="estimator_interface.hpp
+Abstract estimator interface"]
+	Defs [label="ukf_defs.hpp
+State sizes
+Types
+f_cont/rk4"]
+	Logger [label="logger.hpp
+Binary logger
+CAN-style output"]
+	LogConv [label="logger_conversions.hpp
+Eigen->Array logger adapter"]
+	IMU [label="measurement_handler.hpp
+Streams & smooths IMU data"]
+	Truth [label="measurement_model.hpp
+Simulated z(t)
+Adds noise"]
+	Queue [label="thread_safe_queue.hpp
+Used by IMU & Truth"]
+	main -> UKF [label=instantiates]
+	UKF -> Iface [label=implements]
+	UKF -> Defs [label="uses types, f_cont"]
+	UKF -> IMU [label="calls getSmoothedData"]
+	UKF -> Truth [label="calls getNextTruth"]
+	UKF -> Logger [label="logs states"]
+	UKF -> LogConv [label="via log_vector_out"]
+	IMU -> Queue [label=uses]
+	Truth -> Queue [label=uses]
+	main -> IMU [label="starts thread"]
+	main -> Truth [label="starts thread"]
+	LogConv -> Logger [label=wraps]
+}

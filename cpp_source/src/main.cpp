@@ -3,18 +3,28 @@
 #include <string>
 #include <fstream>
 #include <nlohmann/json.hpp>
+#include <thread>
 
 #include "UKF.hpp"
 #include "ukf_defs.hpp"
+#include "timed_playback_sim.hpp"
 
 using std::string;
 using json = nlohmann::json;
+
+
+void run_estimator(const std::shared_ptr<Estimator>& estimator, TimedPlaybackSim& sim, std::chrono::milliseconds period) {
+    // set into a thread to keep the filter going while the main thread waits for user input
+    sim.start_simulation(estimator, period);
+}
+
 
 int main() {
     std::cout << "Loading configs...\n" << std::endl;
 
     // define path to configs (remember that our working dir in runtime is the build folder)
     std::string config_file_path = "system_constants.json";
+    std::string playback_file_path = "rt_playback_conf.json";
 
     // load in the system configurations
     std::ifstream inFile(config_file_path);
@@ -44,18 +54,37 @@ int main() {
 
     initial_state = 1e-3 * Eigen::Matrix<double, N, 1>::Ones();  
 
+    // create time timed playback simulator
+    TimedPlaybackSim sim(playback_file_path);
+
     // create IMU instance
-    std::unique_ptr<Estimator> estimator;
+    std::shared_ptr<Estimator> estimator;
+    std::chrono::milliseconds period(20); // 50 Hz update rate
     #ifdef SIM_MODE
         switch (filter_type) {
             case 2:
-                estimator = std::make_unique<UKF>(config_file_path);
+                estimator = std::make_shared<UKF>(config_file_path);
                 estimator->initialize(initial_state, initial_covariance);
-                estimator->start_filter();
                 break;
             default:
                 std::cerr << "Unknown filter type provided." << std::endl;
                 return -1;
+        }
+
+        // keep the main thread alive while the filter runs
+        std::cout << "Filter started. Press q to stop." << std::endl;
+        std::thread estimator_thread(run_estimator, estimator, std::ref(sim), period);
+
+        // shutdown loop
+        while (true) {
+            char c = std::cin.get();
+            if (c == 'q' || c == 'Q') {
+                std::cout << "Stopping filter..." << std::endl;
+                sim.stop_simulation();     // stop producers first
+                estimator->stop_filter();  // then stop the consumer
+                estimator_thread.join();
+                break;
+            }
         }
     #else
         std::cerr << "Not finished yet! Please use SIM MODE" << std::endl;
