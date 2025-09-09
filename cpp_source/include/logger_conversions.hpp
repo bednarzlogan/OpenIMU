@@ -21,6 +21,11 @@ constexpr uint16_t MSG_ID_SMOOTHED_IMU_MEASUREMENT = 0x04;
 constexpr uint16_t MSG_ID_GROUND_TRUTH = 0x05;
 constexpr uint16_t MSG_ID_ESTIMATED_MEAS = 0x06;
 constexpr uint16_t MSG_ID_MEASUREMENT_RESIDUAL = 0x07;
+constexpr uint16_t MSG_ID_STALE_GNSS = 0x08;
+constexpr uint16_t MSG_ID_GNSS = 0x09;
+constexpr uint16_t MSG_ID_REJECTED_IMU = 0x11;
+constexpr uint16_t MSG_ID_REJECTED_GNSS = 0x12;
+
 
 
 enum class LoggedVectorType : uint16_t {
@@ -30,7 +35,11 @@ enum class LoggedVectorType : uint16_t {
     ImuSmoothed =  MSG_ID_SMOOTHED_IMU_MEASUREMENT,
     GroundTruth = MSG_ID_GROUND_TRUTH,
     EstimatedMeasurement = MSG_ID_ESTIMATED_MEAS,
-    MeasurementResidual = MSG_ID_MEASUREMENT_RESIDUAL
+    MeasurementResidual = MSG_ID_MEASUREMENT_RESIDUAL,
+    StaleGNSS = MSG_ID_STALE_GNSS,
+    GNSS = MSG_ID_GNSS,
+    RejectedIMU = MSG_ID_REJECTED_IMU,
+    RejectedGNSS = MSG_ID_REJECTED_GNSS
 };
 
 
@@ -86,6 +95,22 @@ inline void log_vector_out(Logger& diag_logger,
         case LoggedVectorType::MeasurementResidual:
             diag_logger.logMessage<Z>(MSG_ID_MEASUREMENT_RESIDUAL, DataType::Float32, 0x01,
                                       convertVectorForLogging<Z>(vec));
+            break;
+        case LoggedVectorType::GNSS:
+            diag_logger.logMessage<2 * Z>(MSG_ID_GNSS, DataType::Float32, 0x01,
+                                          convertVectorForLogging<2 * Z>(vec));
+            break;
+        case LoggedVectorType::RejectedIMU:
+            diag_logger.logMessage<Z + 1>(MSG_ID_REJECTED_IMU, DataType::Float32, 0x01,
+                                          convertVectorForLogging<Z + 1>(vec));
+            break;
+        case LoggedVectorType::RejectedGNSS:
+            diag_logger.logMessage<2 * Z + 1>(MSG_ID_REJECTED_GNSS, DataType::Float32, 0x01,
+                                              convertVectorForLogging<2 * Z + 1>(vec));
+            break;
+        case LoggedVectorType::StaleGNSS:
+            diag_logger.logMessage<3>(MSG_ID_STALE_GNSS, DataType::Float32, 0x01,
+                                      convertVectorForLogging<3>(vec));
             break;
         default:
             throw std::invalid_argument("log_vector_out: Unrecognized message type");

@@ -99,3 +99,63 @@
     - res_vel_x
     - res_vel_y
     - res_vel_z
+
+"0x08":
+  name: Stale GNSS
+  type: float32
+  length: 7
+  fields:
+    - timestamp
+    - gnss_pos_x
+    - gnss_pos_y
+    - gnss_pos_z
+    - gnss_vel_x
+    - gnss_vel_y
+    - gnss_vel_z
+  
+"0x09":
+  name: GNSS
+  type: float32
+  length: 7
+  fields:
+    - timestamp
+    - gnss_pos_x
+    - gnss_pos_y
+    - gnss_pos_z
+    - gnss_vel_x
+    - gnss_vel_y
+    - gnss_vel_z
+
+"0x10":
+  name: Env Latency
+  type: float32
+  length: 2
+  fields: 
+    - kind, 
+    - latency_ms
+
+"0x11":
+  name: Rejected IMU Measurement  
+  type: float32
+  length: 7
+  fields:
+    - timestamp
+    - acc_x
+    - acc_y
+    - acc_z
+    - dphi
+    - dtheta
+    - dpsi
+
+"0x12":
+  name: Rejected GNSS Measurement
+  type: float32
+  length: 7
+  fields:
+    - timestamp
+    - gnss_pos_x
+    - gnss_pos_y
+    - gnss_pos_z
+    - gnss_vel_x
+    - gnss_vel_y
+    - gnss_vel_z
