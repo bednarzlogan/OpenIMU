@@ -1,0 +1,6 @@
+build/*
+depriciated/*
+.cache/*
+.vscode/*
+logs/*
+data/*

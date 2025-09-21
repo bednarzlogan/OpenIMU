@@ -8,7 +8,6 @@
 #include "logger.hpp"
 #include "thread_safe_queue.hpp"
 #include "ukf_defs.hpp"
-#include "IMU_Matrices.hpp"
 #include "estimator_interface.hpp"
 
 enum MeasurementType {

@@ -36,6 +36,7 @@ if(UKF_BUILD_SIM)
   add_library(ukf_sim STATIC ${SIM_SOURCES})
   target_include_directories(ukf_sim PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/sim/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/logging
   )
   target_link_libraries(ukf_sim PUBLIC
     ukf::core

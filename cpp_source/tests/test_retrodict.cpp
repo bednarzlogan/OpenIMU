@@ -38,11 +38,8 @@ TEST(UKF_Retrodict, RollbackReplayBasic) {
   UKF ukf("config/ukf_minimal.json");
   ukf.start_filter(std::chrono::milliseconds(2));
 
-  // check history cap to determine # of measurements to send
-  uint8_t cap = ukf.get_hist_cap();
-  
   // history capacity + sampling setup
-  const int cap = static_cast<int>(ukf.get_hist_cap());   // e.g., 50
+  const uint8_t cap = static_cast<int>(ukf.get_hist_cap());   // e.g., 50
   const double fs = 50.0;                                 // Hz
   const double dt = 1.0 / fs;
 
@@ -63,7 +60,7 @@ TEST(UKF_Retrodict, RollbackReplayBasic) {
   // (If this ever fails, adjust the number of IMU samples or hist_cap in the UKF.)
   ASSERT_LE(t_front - 1e-9, tz);
   ASSERT_GE(t_back  + 1e-9, tz);
-  
+
   // GNSS at tz s (inside history)
   ukf.read_gps(makeGnss(tz));
 

@@ -1,6 +1,0 @@
-{
-    "sample_rate": 0.05,
-    "max_measurements": 1000,
-    "imu_data_path": "data/generator_test_2025_06_18_21_54_51.csv",
-    "measurement_file_path": "data/matched_gnss_imu_2025_06_20_23_28_10.csv"
-}

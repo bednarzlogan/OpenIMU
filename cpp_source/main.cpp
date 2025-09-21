@@ -37,7 +37,6 @@ int main(int argc, char** argv) {
 
     StateVec x0 = StateVec::Zero();
     CovMat  P0  = CovMat::Zero();
-    // light, readable diagonal (tune however you like)
     // positions, velocities, attitude, accel bias, gyro bias:
     P0.diagonal() <<
         0.5, 0.5, 0.5,

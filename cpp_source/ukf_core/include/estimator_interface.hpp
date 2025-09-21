@@ -7,7 +7,6 @@
 
 /// NOTE: though this specifies UKF, many of its types are general to other estimators
 #include "ukf_defs.hpp"
-#include "IMU_Matrices.hpp"
 
 using std::string;
 namespace fs = std::filesystem;

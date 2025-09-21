@@ -8,7 +8,6 @@
 #include <ctime>
 #include <iostream>
 
-#include "IMU_Matrices.hpp"
 #include "measurement_handler.hpp"
 
 // for diag_log
