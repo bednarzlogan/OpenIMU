@@ -8,7 +8,6 @@
 #include <thread>
 
 #include "estimator_interface.hpp"
-#include "IMU_Matrices.hpp"
 #include "thread_safe_queue.hpp"
 #include "ukf_defs.hpp"
 

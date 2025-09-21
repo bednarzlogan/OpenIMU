@@ -113,13 +113,13 @@ void TimedPlaybackSim::parse_line(const std::string& line, const std::string& so
             }
             i++;
         }
-        if (i != (uint8_t) Z + 1) {
+        if (i != (uint8_t) M + 1) {
             // log out the rejected IMU measurement
-            Eigen::Matrix<double, Z + 1, 1> out;
+            Eigen::Matrix<double, M + 1, 1> out;
 
             // we'll have to parse out the valid part of the measurement
             const size_t nparsed = static_cast<size_t>(i);
-            const size_t ncopy = std::min((int)nparsed, Z + 1); 
+            const size_t ncopy = std::min((int)nparsed, M + 1); 
             
             // assign in the parts that won't overflow the size
             out.setZero();
@@ -138,6 +138,10 @@ void TimedPlaybackSim::parse_line(const std::string& line, const std::string& so
         imu_measurement.measurement_time = measurement_parts[0];
         imu_measurement.updateFromMatrix();
         _imu_measurements->push(imu_measurement);
+
+        // log out correctly formatted IMU
+        log_vector_out(*_logger, imu_measurement.matrix_form_measurement, LoggedVectorType::ImuRaw);
+
     }
     else if (source == "gnss") {
         while (std::getline(ss, value, ',')) {
@@ -176,6 +180,12 @@ void TimedPlaybackSim::parse_line(const std::string& line, const std::string& so
             measurement.R(j, j) = gnss_measurement_parts[j + 1 + Z];
         }
         _observables->push(measurement);
+
+        // log out correctly formatted GNSS
+        Eigen::Matrix<double, Z + 1, 1> gnss;
+        gnss(0, 0) = measurement.timestamp;
+        gnss.tail(Z) = measurement.observation;
+        log_vector_out(*_logger, gnss, LoggedVectorType::GNSS);
     }
 }
 
@@ -345,6 +355,10 @@ void TimedPlaybackSim::start_simulation(std::shared_ptr<Estimator> estimator, st
         } else if (m_type == MeasurementType::NO_MEASUREMENT && _producer_done.load(std::memory_order_relaxed)
             && _imu_queue->empty() && _observable_queue->empty()) {
             break; // clean shutdown
+        }
+
+        if (m_type != MeasurementType::NO_MEASUREMENT) {
+            log_vector_out(*_logger, estimator->get_state(), LoggedVectorType::NominalState);
         }
     }
 

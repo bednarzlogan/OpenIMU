@@ -164,7 +164,7 @@ def setup_plot(path) -> Tuple[Figure, Axes, Circle]:
     ax.set_aspect("equal")
 
     # initial pursuit circle
-    circle = plt.Circle((0,0), Ld, fill=False, color="gray", linestyle="--")
+    circle = plt.Circle((0,0), Ld, fill=False, color="gray", linestyle="--")  # type: ignore
     ax.add_patch(circle)
 
     return fig, ax, circle
@@ -202,7 +202,8 @@ def main(path_to_waypoints: str) -> int:
 
         if progress_ratio > 0.8:
             dist_to_goal = np.linalg.norm(robot_pos - goal_point)
-            return dist_to_goal < 0.2
+            at_goal: bool = float(dist_to_goal) < 0.2
+            return at_goal
         return False
 
     # step through the simulation
@@ -262,7 +263,7 @@ def main(path_to_waypoints: str) -> int:
         with open(target_log_path, 'a') as log:
             # format the row as:
             # timestamp, gyro_x, gyro_y, gyro_z, accel_x, ...
-            row_formatted_str: str = f"{last_timestamp},0,0,{state["yaw"]},{a},{a_lat},0\n"
+            row_formatted_str: str = f"{last_timestamp},0,0,{state['yaw']},{a},{a_lat},0\n"
             log.write(row_formatted_str)
             last_timestamp += dt
 
@@ -301,7 +302,9 @@ def main(path_to_waypoints: str) -> int:
     while not goal_reached():
         update()
 
+    return 1
+
 if __name__ == "__main__":
-    path_to_data = "waypoints_20250618_210836.csv"
+    path_to_data = ""
     return_code: int = main(path_to_data)
     print(f"Program exited with code: {return_code}")

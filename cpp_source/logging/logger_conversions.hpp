@@ -97,8 +97,8 @@ inline void log_vector_out(Logger& diag_logger,
                                       convertVectorForLogging<Z>(vec));
             break;
         case LoggedVectorType::GNSS:
-            diag_logger.logMessage<2 * Z>(MSG_ID_GNSS, DataType::Float32, 0x01,
-                                          convertVectorForLogging<2 * Z>(vec));
+            diag_logger.logMessage<Z + 1>(MSG_ID_GNSS, DataType::Float32, 0x01,
+                                          convertVectorForLogging<Z + 1>(vec));
             break;
         case LoggedVectorType::RejectedIMU:
             diag_logger.logMessage<Z + 1>(MSG_ID_REJECTED_IMU, DataType::Float32, 0x01,
@@ -109,8 +109,8 @@ inline void log_vector_out(Logger& diag_logger,
                                               convertVectorForLogging<2 * Z + 1>(vec));
             break;
         case LoggedVectorType::StaleGNSS:
-            diag_logger.logMessage<3>(MSG_ID_STALE_GNSS, DataType::Float32, 0x01,
-                                      convertVectorForLogging<3>(vec));
+            diag_logger.logMessage<Z + 1>(MSG_ID_STALE_GNSS, DataType::Float32, 0x01,
+                                      convertVectorForLogging<Z + 1>(vec));
             break;
         default:
             throw std::invalid_argument("log_vector_out: Unrecognized message type");

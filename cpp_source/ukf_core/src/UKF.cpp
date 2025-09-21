@@ -5,7 +5,6 @@
 #include <optional>
 
 #include "UKF.hpp"
-#include "IMU_Matrices.hpp"
 #include "safe_cholesky.hpp"
 
 using json = nlohmann::json;
@@ -161,7 +160,7 @@ void UKF::worker_loop(std::chrono::milliseconds period) {
         // if the GNSS time is within our history window, do rollback + replay.
         // (by construction of gnss_is_next, hist is non-empty and front.t <= z.t <= back.t)
         if (z.timestamp <= hist.back().t + TIME_EPS) {
-            const int k = find_last_leq(z.timestamp );
+            const int k = find_last_leq(z.timestamp);
             if (k >= 0) {
                 // rollback to snapshot k
                 _x = hist.at(static_cast<size_t>(k)).x;
@@ -347,6 +346,9 @@ void UKF::generate_sigma_points(
 void UKF::predict(
     const ControlInput& u, double dt) {
 
+    // tmp debug printouts
+    std::cout << "Processing control input: " << u << " with dt " << dt << std::endl;
+
     // use the nomlinear dynamics to propagate the sigma points into predicted states
     SigmaPointArray sigma_points;
     generate_sigma_points(_x, _P, sigma_points); // get new sigma points
@@ -379,6 +381,9 @@ void UKF::predict(
 }
 
 void UKF::update(const MeasVec& z, const MeasCov& R) {
+    // tmp debug printouts
+    std::cout << "Processing measurement input: " << z << std::endl;
+
     // propagate through measurement model
     std::array<MeasVec, NumSigma> z_sigma;
     for (uint8_t i = 0; i < NumSigma; ++i) {
