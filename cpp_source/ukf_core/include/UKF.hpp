@@ -46,6 +46,23 @@ public:
     const StateVec& get_state() const;
     const CovMat& get_covariance() const;
 
+    // for test API
+    uint8_t get_hist_cap() const noexcept { return hist_cap; }
+    double solution_time() const noexcept { return _solution_time; }
+    double last_gnss_time() const noexcept { return _last_gnss_time; }
+
+    // history window bounds (for assertions)
+    double hist_front_time() const noexcept { return hist.empty() ? 0.0 : hist.front().t; }
+    double hist_back_time()  const noexcept { return hist.empty() ? 0.0 : hist.back().t; }
+    size_t history_size()    const noexcept { return hist.size(); }
+
+    // retrodiction stats for the last GNSS fusion
+    uint32_t last_replay_steps() const noexcept { return _last_replay_steps; }
+    double   last_retrodict_depth_ms() const noexcept { return _last_retrodict_depth_ms; }
+
+    // counter if you increment when dropping stale GNSS
+    uint32_t stale_gnss_drop_count() const noexcept { return _stale_gnss_drop_count; }
+
 private:
     // config
     UKFParams _params;
@@ -95,6 +112,12 @@ private:
     double _solution_time{0.0};
     bool _initialized_time{false};
     double _max_wait_time{1}; // max time to wait for a GNSS measurement before just processing IMU
+
+    // for testers
+    double _last_gnss_time;
+    uint32_t _stale_gnss_drop_count; // diagnostic param for tracking gnss drops
+    uint32_t _last_replay_steps;     // how far back into the retroiction hist we went for last GNSS
+    double _last_retrodict_depth_ms; // similar to the above, but represented in ms delta to GNSS 
 
     // helper function to generate sigma points
     void generate_sigma_points(const StateVec& mu, const CovMat& P, SigmaPointArray& sigma_points);

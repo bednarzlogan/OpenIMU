@@ -1,92 +1,75 @@
+// main.cpp
 #include <iostream>
 #include <memory>
-#include <string>
-#include <fstream>
-#include <nlohmann/json.hpp>
 #include <thread>
+#include <chrono>
 
 #include "UKF.hpp"
-#include "ukf_defs.hpp"
+#include "ukf_defs.hpp"          // for N, StateVec, CovMat if not re-exported by UKF.hpp
 #include "timed_playback_sim.hpp"
 
-using std::string;
-using json = nlohmann::json;
+using namespace std::chrono_literals;
 
-
-void run_estimator(const std::shared_ptr<Estimator>& estimator, TimedPlaybackSim& sim, std::chrono::milliseconds period) {
-    // set into a thread to keep the filter going while the main thread waits for user input
+static void run_playback(const std::shared_ptr<Estimator>& estimator,
+                         TimedPlaybackSim& sim,
+                         std::chrono::milliseconds period)
+{
+    // blocking: returns when sim.stop_simulation() is called
     sim.start_simulation(estimator, period);
 }
 
+int main(int argc, char** argv) {
+    // defaults (CMake copies config/ next to the binary)
+    std::string ukf_config_path = "config/ukf_minimal.json";
+    std::string sim_config_path = "config/rt_playback_conf.json";
+    std::chrono::milliseconds period{20}; // 50 Hz
 
-int main() {
-    std::cout << "Loading configs...\n" << std::endl;
-
-    // define path to configs (remember that our working dir in runtime is the build folder)
-    std::string config_file_path = "conf/system_constants.json";
-    std::string playback_file_path = "conf/rt_playback_conf.json";
-
-    // load in the system configurations
-    std::ifstream inFile(config_file_path);
-    if (!inFile.is_open()) {
-      std::cerr << "Could not open config file: " << config_file_path << std::endl;
+    // ultra-light CLI: ukf_playback [ukf_config] [sim_config] [period_ms]
+    if (argc > 1) ukf_config_path = argv[1];
+    if (argc > 2) sim_config_path = argv[2];
+    if (argc > 3) {
+        try { period = std::chrono::milliseconds(std::stoi(argv[3])); }
+        catch (...) { std::cerr << "WARN: bad period arg; keeping 20 ms.\n"; }
     }
 
-    // find the estimator type
-    // access thre required members
-    json j;
-    inFile >> j;  // streams contents of the config file into 'j'
+    // build estimator (UKF) and seed a small initial covariance/state
+    auto estimator = std::make_shared<UKF>(ukf_config_path);
 
-    // get the type of estimator used
-    int filter_type = j["estimator"];
+    StateVec x0 = StateVec::Zero();
+    CovMat  P0  = CovMat::Zero();
+    // light, readable diagonal (tune however you like)
+    // positions, velocities, attitude, accel bias, gyro bias:
+    P0.diagonal() <<
+        0.5, 0.5, 0.5,
+        0.1, 0.1, 0.1,
+        0.25, 0.25, 0.25,
+        1e-4, 1e-4, 1e-4,
+        1e-4, 1e-4, 1e-4;
 
-    // make a dummy state
-    StateVec initial_state;
-    CovMat initial_covariance;
+    estimator->initialize(x0, P0);
 
-    initial_covariance.setZero();
-    initial_covariance.diagonal() << 
-    0.5, 0.5, 0.5,   // positions
-    0.1, 0.1, 0.1,   // velocities
-    0.25, 0.25, 0.25, // attitude angles
-    1e-4, 1e-4, 1e-4,   // accelerometer biases
-    1e-4, 1e-4, 1e-4;   // gyro biases
+    // timed playback sim reads its own JSON (CSV paths, rates, etc.)
+    TimedPlaybackSim sim(sim_config_path);
 
-    initial_state = 1e-3 * Eigen::Matrix<double, N, 1>::Ones();  
+    std::cout << "Starting playback with UKF config: " << ukf_config_path
+              << "\nSim config: " << sim_config_path
+              << "\nUpdate period: " << period.count() << " ms\n"
+              << "Press 'q' + Enter to stop.\n";
 
-    // create time timed playback simulator
-    TimedPlaybackSim sim(playback_file_path);
+    // run the sim in a worker so we can watch stdin here
+    std::thread worker(run_playback, estimator, std::ref(sim), period);
 
-    // create IMU instance
-    std::shared_ptr<Estimator> estimator;
-    std::chrono::milliseconds period(20); // 50 Hz update rate
-    #ifdef SIM_MODE
-        switch (filter_type) {
-            case 2:
-                estimator = std::make_shared<UKF>(config_file_path);
-                estimator->initialize(initial_state, initial_covariance);
-                break;
-            default:
-                std::cerr << "Unknown filter type provided." << std::endl;
-                return -1;
+    // simple shutdown loop
+    for (char c; std::cin.get(c); ) {
+        if (c == 'q' || c == 'Q') {
+            std::cout << "Stopping...\n";
+            // stop producers first, then consumer, then join
+            sim.stop_simulation();
+            estimator->stop_filter();
+            worker.join();
+            break;
         }
+    }
 
-        // keep the main thread alive while the filter runs
-        std::cout << "Filter started. Press q to stop." << std::endl;
-        std::thread estimator_thread(run_estimator, estimator, std::ref(sim), period);
-
-        // shutdown loop
-        while (true) {
-            char c = std::cin.get();
-            if (c == 'q' || c == 'Q') {
-                std::cout << "Stopping filter..." << std::endl;
-                sim.stop_simulation();     // stop producers first
-                estimator->stop_filter();  // then stop the consumer
-                estimator_thread.join();
-                break;
-            }
-        }
-    #else
-        std::cerr << "Not finished yet! Please use SIM MODE" << std::endl;
-    #endif
+    return 0;
 }

@@ -162,10 +162,16 @@ void UKF::worker_loop(std::chrono::milliseconds period) {
         if (z.timestamp <= hist.back().t + TIME_EPS) {
             const int k = find_last_leq(z.timestamp);
             if (k >= 0) {
+                // expose extent of retrodiction for testing
+                _last_replay_steps = k;
+
                 // rollback to snapshot k
                 _x = hist.at(static_cast<size_t>(k)).x;
                 _P = hist.at(static_cast<size_t>(k)).P;
                 double t = hist.at(static_cast<size_t>(k)).t;
+
+                // expose ms delta between last IMU and GNSS solutions from hist
+                _last_retrodict_depth_ms = hist.back().t - z.timestamp;
 
                 // propagate exactly to GNSS time (ZOH with the next step’s control)
                 if (z.timestamp > t + TIME_EPS) {
@@ -243,6 +249,7 @@ void UKF::worker_loop(std::chrono::milliseconds period) {
             if (too_old) {
                 // TODO - we might want to log this event
                 gnss_next.reset();   // drop it and move on
+                _stale_gnss_drop_count += 1;
             } else {
                 // coverage: can we rollback to tz?  (front <= tz <= back)
                 const bool have_history = !hist.empty();
@@ -269,6 +276,7 @@ void UKF::worker_loop(std::chrono::milliseconds period) {
             }
             // then apply the GNSS update (with ZOH catch-up or rollback+replay as needed)
             process_gnss(*gnss_next);
+            _last_gnss_time = gnss_next->timestamp;
             gnss_next.reset();
         } else {
             // IMU is earlier = process it (or try to stage one)

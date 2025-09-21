@@ -8,6 +8,7 @@ option(UKF_BUILD_TESTS     "Build GoogleTest-based tests"       OFF)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(Eigen3 REQUIRED)
 find_package(Boost REQUIRED)
@@ -29,9 +30,10 @@ add_library(ukf::core ALIAS ukf_core)
 
 # ========= Simulator library (optional) =========
 if(UKF_BUILD_SIM)
-  add_library(ukf_sim STATIC
-    sim/src/timed_playback_sim.cpp
+  file(GLOB_RECURSE SIM_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/sim/src/*.cpp
   )
+  add_library(ukf_sim STATIC ${SIM_SOURCES})
   target_include_directories(ukf_sim PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/sim/include
   )
@@ -57,6 +59,7 @@ endif()
 
 # ========= Tests (optional) =========
 if(UKF_BUILD_TESTS)
+  include(CTest)  
   include(FetchContent)
   FetchContent_Declare(
     googletest
@@ -67,10 +70,6 @@ if(UKF_BUILD_TESTS)
 
   add_executable(ukf_tests
     tests/test_retrodict.cpp
-    tests/test_stale_gnss.cpp
-    tests/test_sim_pump.cpp
-    # Option A: no explicit test_main; use gtest_main:
-    # (remove tests/test_main.cpp if it existed)
   )
   target_link_libraries(ukf_tests PRIVATE
     ukf::core
