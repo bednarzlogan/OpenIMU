@@ -5,7 +5,6 @@
 #include <thread>
 #include <Eigen/Dense>
 
-#include "IMU_Matrices.hpp"
 #include "thread_safe_queue.hpp"
 
 #include "logger.hpp" 

@@ -1,10 +1,18 @@
-#include "timed_playback_sim.hpp"
-#include "IMU_Matrices.hpp"
-#include "ukf_defs.hpp"
 #include <array>
+#include <algorithm>
 #include <cstddef>
 #include <nlohmann/json.hpp>
 #include <thread>
+#include <sstream>
+#include <limits>
+#include <algorithm>
+#include <fstream>
+#include <iostream>
+
+#include "timed_playback_sim.hpp"
+#include "ukf_defs.hpp"
+#include "logger_conversions.hpp"
+
 
 using json = nlohmann::json;
 using namespace std::chrono;
@@ -67,7 +75,16 @@ void TimedPlaybackSim::load_configurations() {
     _imu_queue = std::make_unique<ThreadQueue<ImuData>>((size_t) max_measurements);
     _observable_queue = std::make_unique<ThreadQueue<Observable>>((size_t) max_measurements);
 
+    // set up the logger
+    const std::string output_dir = j["output_dir"];
+    const std::string log_path_str = output_dir + "TimedPlaybackSim.bin";
+    _logger = std::make_unique<Logger>(log_path_str);
+
+    // track where the log will be written for the test units
+    std::filesystem::path log_path(log_path_str);
+    _log_path = log_path;
 }
+
 
 TimedPlaybackSim::TimedPlaybackSim(const std::string& config_path) 
     : _config_path(config_path), _current_time(0.0), _running(false) {
@@ -101,7 +118,22 @@ void TimedPlaybackSim::parse_line(const std::string& line, const std::string& so
             }
             i++;
         }
-        if (i != (uint8_t) Z + 1) return;
+        if (i != (uint8_t) M + 1) {
+            // log out the rejected IMU measurement
+            Eigen::Matrix<double, M + 1, 1> out;
+
+            // we'll have to parse out the valid part of the measurement
+            const size_t nparsed = static_cast<size_t>(i);
+            const size_t ncopy = std::min((int)nparsed, M + 1); 
+            
+            // assign in the parts that won't overflow the size
+            out.setZero();
+            for (size_t idx = 0; idx < ncopy; ++idx) {
+                out(idx) = measurement_parts[idx];
+            }
+            log_vector_out(*_logger, out, LoggedVectorType::RejectedIMU);
+            return;
+        }
 
         measurement.timestamp = measurement_parts[0];
 
@@ -111,6 +143,10 @@ void TimedPlaybackSim::parse_line(const std::string& line, const std::string& so
         imu_measurement.measurement_time = measurement_parts[0];
         imu_measurement.updateFromMatrix();
         _imu_measurements->push(imu_measurement);
+
+        // log out correctly formatted IMU
+        log_vector_out(*_logger, imu_measurement.matrix_form_measurement, LoggedVectorType::ImuRaw);
+
     }
     else if (source == "gnss") {
         while (std::getline(ss, value, ',')) {
@@ -125,7 +161,21 @@ void TimedPlaybackSim::parse_line(const std::string& line, const std::string& so
             }
             i++;
         }
-        if (i != (uint8_t) 2 * Z + 1) return;
+        if (i != (uint8_t) 2 * Z + 1) {
+            // similar to above, log out the rejected GNSS measurement
+            Eigen::Matrix<double, 2 * Z + 1, 1> out;
+            out.setZero();
+
+            const size_t nparsed = static_cast<size_t>(i);
+            const size_t ncopy   = std::min(nparsed, static_cast<size_t>(2 * Z + 1));
+
+            for (size_t idx = 0; idx < ncopy; ++idx) {
+                out(static_cast<Eigen::Index>(idx)) = gnss_measurement_parts[idx];
+            }
+
+            log_vector_out(*_logger, out, LoggedVectorType::RejectedGNSS);
+            return;
+        }
 
         measurement.timestamp = gnss_measurement_parts[0];
         for (int j = 0; j < Z; ++j) {
@@ -135,8 +185,15 @@ void TimedPlaybackSim::parse_line(const std::string& line, const std::string& so
             measurement.R(j, j) = gnss_measurement_parts[j + 1 + Z];
         }
         _observables->push(measurement);
+
+        // log out correctly formatted GNSS
+        Eigen::Matrix<double, Z + 1, 1> gnss;
+        gnss(0, 0) = measurement.timestamp;
+        gnss.tail(Z) = measurement.observation;
+        log_vector_out(*_logger, gnss, LoggedVectorType::GNSS);
     }
 }
+
 
 void TimedPlaybackSim::batcher_thread() {
     std::ifstream imu_file(_imu_data_path);
@@ -159,6 +216,7 @@ void TimedPlaybackSim::batcher_thread() {
     }
     _producer_done.store(true, std::memory_order_release);
 }
+
 
 void TimedPlaybackSim::queue_setter_timer() {
     // This function will set a timer based on the sample rate and push measurements to the respective queues
@@ -207,8 +265,11 @@ void TimedPlaybackSim::queue_setter_timer() {
             if (!imu_avail && !obs_avail) {
                 // if we've got nothing else in the producer queues and we've 
                 // finished reading the files in, we can stop the simulation
-                if (_producer_done.load(std::memory_order_acquire)) 
+                if (_producer_done.load(std::memory_order_acquire))  {
                     _running.store(false, std::memory_order_relaxed);
+                    { std::lock_guard<std::mutex> lk(cv_mtx_); }
+                    cv_.notify_all();
+                }
                 break;  // even if not done, nothing to push
             }
 
@@ -219,13 +280,22 @@ void TimedPlaybackSim::queue_setter_timer() {
             if (t_min > sim_now) break;  // next measurement is in the future
             
             // push the next measurement(s)
+            bool new_meas = false;
             if (imu_avail && next_imu_time <= sim_now) {
                 _imu_measurements->try_pop(imu_m);   // consume the one we just peeked
                 _imu_queue->push(imu_m);               // deliver to live queue
+                new_meas = true;
             }
             if (obs_avail && next_obs_time <= sim_now) {
                 _observables->try_pop(obs_m);
                 _observable_queue->push(obs_m);
+                new_meas = true;
+            }
+
+            if (new_meas) {
+                // notify any waiting threads that new data is available
+                { std::unique_lock<std::mutex> lk(cv_mtx_); }
+                cv_.notify_all();
             }
         }
 
@@ -242,7 +312,7 @@ void TimedPlaybackSim::queue_setter_timer() {
 }
 
 
-void TimedPlaybackSim::start_simulation() {
+void TimedPlaybackSim::start_simulation(std::shared_ptr<Estimator> estimator, std::chrono::milliseconds period) {
     // The processing loop is like this:
     // 1. Set a timer based on the fastest sensor sample rate
     // 2. Start a thread which will read measurements into a local memory structure while we wait for timer ticks
@@ -255,12 +325,64 @@ void TimedPlaybackSim::start_simulation() {
     // start a thread for the timer that will push measurements to the queues
     std::thread queue_setter_thread(&TimedPlaybackSim::queue_setter_timer, this);
 
+    // start the estimator processing loop
+    estimator->start_filter(period);
+
+    auto can_act = [&]{
+        // wake if: stop requested, or there is any live data to send to the estimator,
+        // or sim has finished (done & live queues empty) so we can exit
+        const bool stop  = !_running.load(std::memory_order_relaxed);
+        const bool data  = !_imu_queue->empty() || !_observable_queue->empty();
+        const bool done  = _producer_done.load(std::memory_order_relaxed)
+                        && _imu_queue->empty() && _observable_queue->empty();
+        return stop || data || done;
+    };
+
+    for (;;) {
+        // wait until something changed
+        std::unique_lock<std::mutex> lk(cv_mtx_);
+        cv_.wait(lk, can_act);
+        lk.unlock();
+
+        if (!_running.load(std::memory_order_relaxed)) {
+            // optional: drain any stragglers before exiting, or just break
+            if (_imu_queue->empty() && _observable_queue->empty()) break;
+        }
+
+        // repeatedly attempt to fetch a measurement and serve it to the estimator
+        ImuData imu_m;
+        Observable obs_m;
+        MeasurementType m_type = get_next_observation(imu_m, obs_m);
+        if (m_type == MeasurementType::IMU) {
+            estimator->read_imu(imu_m);
+        } else if (m_type == MeasurementType::GNSS) {
+            estimator->read_gps(obs_m);
+        } else if (m_type == MeasurementType::NO_MEASUREMENT && _producer_done.load(std::memory_order_relaxed)
+            && _imu_queue->empty() && _observable_queue->empty()) {
+            break; // clean shutdown
+        }
+
+        if (m_type != MeasurementType::NO_MEASUREMENT) {
+            log_vector_out(*_logger, estimator->get_state(), LoggedVectorType::NominalState);
+        }
+    }
+
     // wait for user interrupt or internal flag to end
     batcher_thread.join();
     queue_setter_thread.join();
     
     std::cout << "Simulation stopped." << std::endl;
 }
+
+
+void TimedPlaybackSim::stop_simulation() {
+    _running.store(false, std::memory_order_relaxed);
+    _producer_done.store(true, std::memory_order_release);
+    { std::lock_guard<std::mutex> lk(cv_mtx_); }
+    cv_.notify_all();
+    std::cout << "Simulation stopped via interrupt." << std::endl;
+}
+
 
 MeasurementType TimedPlaybackSim::get_next_observation(ImuData& imu_measurement, Observable& observable_measurement) {
     // this function will try to pop the next IMU and observable measurements from the queues in chronological order

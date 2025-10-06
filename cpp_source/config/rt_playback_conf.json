@@ -1,0 +1,7 @@
+{
+    "sample_rate": 0.05,
+    "max_measurements": 1000,
+    "imu_data_path": "data/generator_test_2025_09_16_22_45_24.csv",
+    "measurement_file_path": "data/ground_truth_2025_09_16_22_45_24_PV.csv",
+    "output_dir": "./logging"
+}

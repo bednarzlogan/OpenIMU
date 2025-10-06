@@ -31,6 +31,24 @@ struct Observable {
     MeasCov R;
 };
 
+// measurements and expected state vector definitions
+struct ImuData {
+    double accx, accy, accz;
+    double dphix, dthetay, dpsiz;
+    double measurement_time;
+    Eigen::Matrix<double,6,1> matrix_form_measurement;
+
+    void updateFromMatrix() {
+        accx    = matrix_form_measurement(0); accy    = matrix_form_measurement(1); accz    = matrix_form_measurement(2);
+        dphix   = matrix_form_measurement(3); dthetay = matrix_form_measurement(4); dpsiz   = matrix_form_measurement(5);
+    }
+
+    void updateFromDoubles() {
+        matrix_form_measurement(0)=accx; matrix_form_measurement(1)=accy; matrix_form_measurement(2)=accz;
+        matrix_form_measurement(3)=dphix; matrix_form_measurement(4)=dthetay; matrix_form_measurement(5)=dpsiz;
+    }
+};
+
 struct UKFParams {
     double tau_a, tau_g;       // time constants for gyro/accel FOGMP
     double sig_a, sig_g;       // variance on AWGN on FOGMP process
