@@ -76,7 +76,13 @@ void TimedPlaybackSim::load_configurations() {
     _observable_queue = std::make_unique<ThreadQueue<Observable>>((size_t) max_measurements);
 
     // set up the logger
-    _logger = std::make_unique<Logger>("TimedPlaybackSim.bin");
+    const std::string output_dir = j["output_dir"];
+    const std::string log_path_str = output_dir + "TimedPlaybackSim.bin";
+    _logger = std::make_unique<Logger>(log_path_str);
+
+    // track where the log will be written for the test units
+    std::filesystem::path log_path(log_path_str);
+    _log_path = log_path;
 }
 
 

@@ -34,9 +34,6 @@ void UKF::read_configs(std::ifstream& inFile) {
     _beta = j["beta"];
     _kappa = j["kappa"];
 
-    // get measurement file path
-    _measurement_file_path = j["path_to_measurement"];
-
     // example printouts
     std::cout << "Configuration loaded successfully.\n";
     std::cout << "Accelerometer time constant (tau_a): " << hold_config.tau_a << "\n";

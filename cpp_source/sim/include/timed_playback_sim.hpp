@@ -39,7 +39,7 @@ enum MeasurementType {
     /**
     * @brief Stops the playback simulation.
     */
-void stop_simulation(); 
+    void stop_simulation(); 
 
     /**
     * @brief Gets the next observation based on the current time.
@@ -53,8 +53,15 @@ void stop_simulation();
     * 
     * @return The running status as a boolean.
     */
-    bool is_running() const {return _running || !_imu_queue->empty() || !_observable_queue->empty();}  
+    bool is_running() const {return _running || !_imu_queue->empty() || !_observable_queue->empty();}
 
+    /**
+    * @brief Gets the path to the output binary log
+    * 
+    * @return Filesystem path to log
+    */
+    inline const std::filesystem::path& get_log_path() { return _log_path; }
+    
 private:
     // configs and string info
     std::string _config_path;  // path to the configuration file
@@ -63,6 +70,7 @@ private:
     float _sample_rate;  // rate of the fastest sensor 
 
     // logger 
+    std::filesystem::path _log_path;
     std::unique_ptr<Logger> _logger;
 
     // we require that the following keys are present in the configuration file

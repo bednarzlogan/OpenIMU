@@ -71,6 +71,7 @@ if(UKF_BUILD_TESTS)
 
   add_executable(ukf_tests
     tests/test_retrodict.cpp
+    tests/test_sim_scenario.cpp
   )
   target_link_libraries(ukf_tests PRIVATE
     ukf::core
