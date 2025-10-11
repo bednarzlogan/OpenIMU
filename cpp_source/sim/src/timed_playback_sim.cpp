@@ -8,6 +8,9 @@
 #include <algorithm>
 #include <fstream>
 #include <iostream>
+#include <string>
+#include <filesystem>
+
 
 #include "timed_playback_sim.hpp"
 #include "ukf_defs.hpp"
@@ -198,23 +201,42 @@ void TimedPlaybackSim::parse_line(const std::string& line, const std::string& so
 void TimedPlaybackSim::batcher_thread() {
     std::ifstream imu_file(_imu_data_path);
     std::ifstream gnss_file(_measurement_file_path);
+    bool imu_open = imu_file.is_open();
 
-    std::string line;
-    std::getline(imu_file, line); // skip header
-    std::getline(gnss_file, line); // skip header
+    if (!imu_file.is_open() || !gnss_file.is_open()) {
+        // signal producers are done and bail
+        _producer_done.store(true, std::memory_order_release);
+        cv_.notify_all();
+        return;
+    }
+
+    std::string imu_line;
+    std::string gnss_line;
+
+    // skip headers (ok if empty: getline returns false and we’ll hit *_done below)
+    std::getline(imu_file, imu_line);
+    std::getline(gnss_file, gnss_line);
 
     bool imu_done = false, gnss_done = false;
     while (!imu_done || !gnss_done) {
         if (!imu_done) {
-            if (std::getline(imu_file, line)) parse_line(line, "imu");
-            else imu_done = true;
+            if (std::getline(imu_file, imu_line)) {
+                parse_line(imu_line, "imu");
+            } else {
+                imu_done = true;
+            }
         }
         if (!gnss_done) {
-            if (std::getline(gnss_file, line)) parse_line(line, "gnss");
-            else gnss_done = true;
+            if (std::getline(gnss_file, gnss_line)) {
+                parse_line(gnss_line, "gnss");
+            } else {
+                gnss_done = true;
+            }
         }
     }
+
     _producer_done.store(true, std::memory_order_release);
+    cv_.notify_all(); // wake any waiters
 }
 
 

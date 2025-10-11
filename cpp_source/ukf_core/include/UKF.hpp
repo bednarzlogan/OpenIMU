@@ -106,7 +106,7 @@ private:
     };
     using HistAlloc = Eigen::aligned_allocator<Snapshot>;
     boost::circular_buffer<Snapshot, HistAlloc> hist;
-    uint8_t hist_cap{50}; 
+    uint16_t hist_cap{500}; 
 
     // time bookkeeping
     double _solution_time{0.0};

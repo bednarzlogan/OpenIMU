@@ -55,6 +55,8 @@ if(UKF_BUILD_SIM AND UKF_BUILD_SIM_APP)
     COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_CURRENT_SOURCE_DIR}/config
             $<TARGET_FILE_DIR:ukf_playback>/config
+            ${CMAKE_CURRENT_SOURCE_DIR}/data
+            $<TARGET_FILE_DIR:ukf_playback>/data
   )
 endif()
 

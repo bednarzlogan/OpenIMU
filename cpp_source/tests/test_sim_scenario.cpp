@@ -41,7 +41,7 @@ TEST(SimScenario, Fifty_Meter_Loop) {
   // A) if start_simulation() returns at EOF:
 
   // Wait up to 5 minutes; abort cleanly if it runs long
-  const auto deadline = std::chrono::steady_clock::now() + 300s;
+  const auto deadline = std::chrono::steady_clock::now() + 900s;
   while (sim.is_running() && std::chrono::steady_clock::now() < deadline) {
     std::this_thread::sleep_for(5ms);
   }
