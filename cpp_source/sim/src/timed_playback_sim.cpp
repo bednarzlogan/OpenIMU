@@ -101,8 +101,10 @@ TimedPlaybackSim::TimedPlaybackSim(const std::string &config_path)
   load_configurations();
 }
 
-void TimedPlaybackSim::parse_line(const std::string &line,
-                                  const std::string &source) {
+MeasurementType TimedPlaybackSim::parse_line(const std::string &line,
+                                             const std::string &source,
+                                             ImuData &imu_data,
+                                             Observable &observable_data) {
   std::stringstream ss(line);
   std::string value;
   std::array<double, Z + 1> measurement_parts;
@@ -112,21 +114,21 @@ void TimedPlaybackSim::parse_line(const std::string &line,
 
   // skip empty lines and headers
   if (line.empty())
-    return;
+    return NO_MEASUREMENT;
   if (line.rfind("timestamp", 0) == 0)
-    return;
+    return NO_MEASUREMENT;
 
   uint8_t i = 0;
   if (source == "imu") {
     while (std::getline(ss, value, ',')) {
       if (i >= Z + 1) {
         std::cerr << "Too many elements in IMU CSV row!" << std::endl;
-        return;
+        return NO_MEASUREMENT;
       }
       try {
         measurement_parts[i] = std::stod(value);
       } catch (...) {
-        return;
+        return NO_MEASUREMENT;
       }
       i++;
     }
@@ -144,7 +146,7 @@ void TimedPlaybackSim::parse_line(const std::string &line,
         out(idx) = measurement_parts[idx];
       }
       log_vector_out(*_logger, out, LoggedVectorType::RejectedIMU);
-      return;
+      return NO_MEASUREMENT;
     }
 
     measurement.timestamp = measurement_parts[0];
@@ -154,22 +156,25 @@ void TimedPlaybackSim::parse_line(const std::string &line,
     }
     imu_measurement.measurement_time = measurement_parts[0];
     imu_measurement.updateFromMatrix();
-    _imu_measurements->push(imu_measurement);
+
+    // populate reference so outside functions get a measurement back
+    imu_data = imu_measurement;
 
     // log out correctly formatted IMU
     log_vector_out(*_logger, imu_measurement.matrix_form_measurement,
                    LoggedVectorType::ImuRaw);
+    return IMU;
 
   } else if (source == "gnss") {
     while (std::getline(ss, value, ',')) {
       if (i >= 2 * Z + 1) {
         std::cerr << "Too many elements in GNSS CSV row!" << std::endl;
-        return;
+        return NO_MEASUREMENT;
       }
       try {
         gnss_measurement_parts[i] = std::stod(value);
       } catch (...) {
-        return;
+        return NO_MEASUREMENT;
       }
       i++;
     }
@@ -186,7 +191,7 @@ void TimedPlaybackSim::parse_line(const std::string &line,
       }
 
       log_vector_out(*_logger, out, LoggedVectorType::RejectedGNSS);
-      return;
+      return NO_MEASUREMENT;
     }
 
     measurement.timestamp = gnss_measurement_parts[0];
@@ -196,14 +201,22 @@ void TimedPlaybackSim::parse_line(const std::string &line,
     for (int j = 0; j < Z; ++j) {
       measurement.R(j, j) = gnss_measurement_parts[j + 1 + Z];
     }
-    _observables->push(measurement);
+    //_observables->push(measurement);
+
+    // populate the reference so that outside functions can access it
+    observable_data = measurement;
 
     // log out correctly formatted GNSS
     Eigen::Matrix<double, Z + 1, 1> gnss;
     gnss(0, 0) = measurement.timestamp;
     gnss.tail(Z) = measurement.observation;
     log_vector_out(*_logger, gnss, LoggedVectorType::GNSS);
+
+    return GNSS;
   }
+
+  // bad source case
+  return NO_MEASUREMENT;
 }
 
 void TimedPlaybackSim::batcher_thread() {
@@ -226,21 +239,45 @@ void TimedPlaybackSim::batcher_thread() {
   std::getline(imu_file, imu_line);
   std::getline(gnss_file, gnss_line);
 
+  // allocate measurements
+  ImuData imu_data;
+  Observable gnss_data;
+  bool imu_valid = false;
+  bool gnss_valid = false;
+
   bool imu_done = false, gnss_done = false;
   while (!imu_done || !gnss_done) {
-    if (!imu_done) {
+
+    // walk through the files if we need a new measurement
+    if (!imu_done and !imu_valid) {
       if (std::getline(imu_file, imu_line)) {
-        parse_line(imu_line, "imu");
-      } else {
+        if (parse_line(imu_line, "imu", imu_data, gnss_data) == IMU)
+          imu_valid = true;
+      } else if (imu_done) {
         imu_done = true;
       }
     }
-    if (!gnss_done) {
+    if (!gnss_done and !gnss_valid) {
       if (std::getline(gnss_file, gnss_line)) {
-        parse_line(gnss_line, "gnss");
-      } else {
+        if (parse_line(gnss_line, "gnss", imu_data, gnss_data) == GNSS)
+          gnss_valid = true;
+      } else if (gnss_done) {
         gnss_done = true;
       }
+    }
+  }
+
+  if (imu_valid && gnss_valid) {
+    // process the earlier of the GNSS and IMU data
+    bool imu_earlier = imu_data.measurement_time <= gnss_data.timestamp;
+
+    // process the earlier measurement
+    if (imu_earlier) {
+      // pass imu data to estimator
+      imu_valid = false;
+    } else {
+      // process GNSS data
+      gnss_valid = false;
     }
   }
 

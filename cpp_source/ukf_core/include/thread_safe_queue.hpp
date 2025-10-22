@@ -56,8 +56,6 @@ public:
 
     m_queue.push_back(value);
 
-    std::cout << "Element pushed. Queue size: " << m_queue.size() << std::endl;
-
     m_condVar.notify_one();
     // lock is automatically released when lock goes out of scope.
   }

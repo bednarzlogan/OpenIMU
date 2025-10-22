@@ -110,5 +110,6 @@ private:
 
   void batcher_thread();
   void queue_setter_timer();
-  void parse_line(const std::string &line, const std::string &source);
+  MeasurementType parse_line(const std::string &line, const std::string &source,
+                             ImuData &imu_data, Observable &observable_data);
 };
