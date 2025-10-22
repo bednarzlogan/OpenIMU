@@ -9,6 +9,7 @@ import yaml
 
 MAGIC_EXPECTED = 0x46474F4C  # ASCII: 'LOGF'
 
+
 def read_log_header(f):
     # read the 6-byte magic + version + endianness header
     header = f.read(6)
@@ -29,15 +30,20 @@ def read_log_header(f):
     version = header[4]
     declared_endian = header[5]
 
-    print(f"Detected log version: {version}, magic endianness: {endian}, declared endian: {declared_endian}")
+    print(
+        f"Detected log version: {version}, magic endianness: {endian}, declared endian: {declared_endian}"
+    )
 
-    if (endian == "little" and declared_endian != 1) or (endian == "big" and declared_endian != 0):
+    if (endian == "little" and declared_endian != 1) or (
+        endian == "big" and declared_endian != 0
+    ):
         print("[!] Warning: Declared endian and magic endian disagree")
 
     return endian
 
+
 def skip_optional_text_headers(f: BufferedReader) -> str:
-    log_start_time = None
+    log_start_time: str | None = None
 
     while True:
         pos: int = f.tell()
@@ -45,18 +51,22 @@ def skip_optional_text_headers(f: BufferedReader) -> str:
         if not line:
             break  # EOF
         # there's a line break between the header and datetime string
-        if not line.startswith(b"#") and not line.startswith(b'\n'):
+        if not line.startswith(b"#") and not line.startswith(b"\n"):
             f.seek(pos)
             break
 
         # Try to match log start time
         line_str: str = line.decode("utf-8").strip()
         if line_str.startswith("# Log Start Time:"):
-            log_start_time: str = line_str.replace("# Log Start Time:", "").strip()
+            log_start_time = line_str.replace("# Log Start Time:", "").strip()
+
+    if log_start_time is None:
+        raise ValueError("Log start time not found")
 
     return log_start_time
 
-def crc16_ccitt(data: bytes, crc=0xFFFF) -> int:
+
+def crc16_ccitt(data: bytes, crc: int = 0xFFFF) -> int:
     for b in data:
         crc ^= b << 8
         for _ in range(8):
@@ -66,15 +76,15 @@ def crc16_ccitt(data: bytes, crc=0xFFFF) -> int:
                 crc = (crc << 1) & 0xFFFF
     return crc
 
-def load_schema() -> dict:
+
+def load_schema() -> Any:
     with open("log_schema.yaml", "r") as f:
         return yaml.safe_load(f)
 
-def decode_payload(msg_id: int, 
-                   payload: bytes, 
-                   schema: dict, 
-                   endian_prefix: int, 
-                   timestamp: float) -> Dict[str, Any]:
+
+def decode_payload(
+    msg_id: int, payload: bytes, schema: dict, endian_prefix: int, timestamp: float
+) -> Dict[str, Any]:
     # locate the schema entry for the message ID
     msg_key = f"0x{msg_id:02x}"
     if msg_key not in schema:
@@ -87,7 +97,13 @@ def decode_payload(msg_id: int,
     fields = entry.get("fields", None)
 
     # Build the struct format string
-    fmt_map = {"float32": "f", "int16": "h", "uint8": "B"}
+    fmt_map = {
+        "float32": "f",
+        "int16": "h",
+        "uint8": "B",
+        "int32": "i",
+        "uint32": "I",
+    }
     if dtype not in fmt_map:
         raise ValueError(f"Unsupported data type: {dtype}")
 
@@ -105,10 +121,16 @@ def decode_payload(msg_id: int,
         # this is an incomplete signal payload!
         # the CRC should have caught this
         return {}
-    
+
+    with open("tmp_dump.txt", "a") as f:
+        _ = f.write(f"{timestamp} {msg_id:04x} {payload.hex()}\n")
+
     return return_dict
 
-def parse_log(file_path: str, target_ids: List[int]) -> Tuple[Dict[int, pd.DataFrame], str]:
+
+def parse_log(
+    file_path: str, target_ids: List[int]
+) -> Tuple[Dict[int, pd.DataFrame], str]:
     # make a dict to hold each set of frames
     df_dict: Dict[int, pd.DataFrame] = {}
 
@@ -120,7 +142,7 @@ def parse_log(file_path: str, target_ids: List[int]) -> Tuple[Dict[int, pd.DataF
         log_start_time = skip_optional_text_headers(f)
 
         print(f"[i] Log started at: {log_start_time}")
-        
+
         endian_prefix = "<" if endian == "little" else ">"
 
         HEADER_STRUCT = struct.Struct(endian_prefix + "I H B B B")
@@ -133,7 +155,7 @@ def parse_log(file_path: str, target_ids: List[int]) -> Tuple[Dict[int, pd.DataF
             header_data: bytes = f.read(HEADER_STRUCT.size)
             if len(header_data) < HEADER_STRUCT.size:
                 break
-            
+
             # use the header struct to unpack all the header fields from the bytes
             timestamp, msg_id, flags, node_id, dlc = HEADER_STRUCT.unpack(header_data)
 
@@ -156,12 +178,14 @@ def parse_log(file_path: str, target_ids: List[int]) -> Tuple[Dict[int, pd.DataF
                 continue
 
             # decode the payload and associate with fields from schema
-            log_row: Dict[str, Any] = decode_payload(msg_id, payload, schema, endian_prefix, timestamp)
-            
+            log_row: Dict[str, Any] = decode_payload(
+                msg_id, payload, schema, endian_prefix, timestamp
+            )
+
             # if the row is incomplete, skip it
             if not log_row:
                 continue
-            
+
             if msg_id not in rows_dict:
                 rows_dict[msg_id] = []
 
@@ -175,11 +199,16 @@ def parse_log(file_path: str, target_ids: List[int]) -> Tuple[Dict[int, pd.DataF
 
         return df_dict, log_start_time
 
+
 if __name__ == "__main__":
+
     def browse_file():
         root = tk.Tk()
         root.withdraw()  # Hide the root window
-        file_path = filedialog.askopenfilename(title="Select Log File", filetypes=[("Log Files", "*.bin"), ("All Files", "*.*")])
+        file_path = filedialog.askopenfilename(
+            title="Select Log File",
+            filetypes=[("Log Files", "*.bin"), ("All Files", "*.*")],
+        )
         return file_path
 
     file_path = browse_file()

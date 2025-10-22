@@ -10,6 +10,9 @@
 
 using json = nlohmann::json;
 
+// TMP
+static std::ofstream debug_log("worker_loop_debug.csv", std::ios::app);
+
 void UKF::read_configs(std::ifstream &inFile) {
   UKFParams hold_config;
 
@@ -364,8 +367,8 @@ void UKF::generate_sigma_points(const StateVec &mu, const CovMat &P,
 void UKF::predict(const ControlInput &u, double dt) {
 
   // tmp debug printouts
-  std::cout << "Processing control input: " << u << " with dt " << dt
-            << std::endl;
+  // std::cout << "Processing control input:\n"
+  //           << u << "\n with dt " << dt << std::endl;
 
   // use the nomlinear dynamics to propagate the sigma points into predicted
   // states
@@ -398,6 +401,13 @@ void UKF::predict(const ControlInput &u, double dt) {
   _x = mu_pred;
   _P = P_pred;
   _sigma_points = propagated_sigmas;
+
+  // debug logging
+  if (debug_log.is_open()) {
+    debug_log << "Current state:\n"
+              << _x.transpose() << "\nLast control input:\n"
+              << u.transpose() << std::endl;
+  }
 }
 
 void UKF::update(const MeasVec &z, const MeasCov &R) {

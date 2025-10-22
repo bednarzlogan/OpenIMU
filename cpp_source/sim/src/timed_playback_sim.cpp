@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -10,6 +11,7 @@
 #include <string>
 #include <thread>
 
+#include "logger.hpp"
 #include "logger_conversions.hpp"
 #include "timed_playback_sim.hpp"
 #include "ukf_defs.hpp"
@@ -17,6 +19,12 @@
 using json = nlohmann::json;
 using namespace std::chrono;
 using clk = std::chrono::steady_clock;
+
+// TMP
+static std::ofstream debug_log_playback("playback_debug.csv", std::ios::app);
+static std::ofstream debug_log_sim_start("start_loop_debug.csv", std::ios::app);
+static std::ofstream debug_log_get_obs("get_next_measurement_debug.csv",
+                                       std::ios::app);
 
 bool check_key(std::string key, const json &j) {
   // check if the key exists in the JSON object
@@ -321,6 +329,12 @@ void TimedPlaybackSim::queue_setter_timer() {
         _imu_measurements->try_pop(imu_m); // consume the one we just peeked
         _imu_queue->push(imu_m);           // deliver to live queue
 
+        if (debug_log_playback.is_open()) {
+          debug_log_playback
+              << "IMU measurement at " << imu_m.measurement_time << ":\n"
+              << imu_m.matrix_form_measurement.transpose() << std::endl;
+        }
+
         // update the last IMU queue size
         _last_imu_queue_sz.store(_imu_queue->size());
 
@@ -414,13 +428,47 @@ void TimedPlaybackSim::start_simulation(std::shared_ptr<Estimator> estimator,
     } else if (m_type == MeasurementType::NO_MEASUREMENT &&
                _producer_done.load(std::memory_order_relaxed) &&
                _imu_queue->empty() && _observable_queue->empty()) {
-      break; // clean shutdown
+      // break; // clean shutdown
+    }
+
+    if (debug_log_sim_start.is_open()) {
+      if (m_type == MeasurementType::IMU) {
+        debug_log_sim_start << "IMU measurement passed\n"
+                            << imu_m.matrix_form_measurement << "\n";
+      } else if (m_type == MeasurementType::GNSS) {
+        debug_log_sim_start << "GNSS" << obs_m.observation << "\n";
+      } else if (m_type == MeasurementType::NO_MEASUREMENT) {
+        debug_log_sim_start << "NO_MEASUREMENT";
+      }
+      debug_log_sim_start << std::endl;
     }
 
     if (m_type != MeasurementType::NO_MEASUREMENT) {
       log_vector_out(*_logger, estimator->get_state(),
                      LoggedVectorType::NominalState);
     }
+
+    // check for dropped IMU and GNSS messages
+    size_t dropped_imu = estimator->get_dropped_measurement_count(1);
+    size_t dropped_gnss = estimator->get_dropped_measurement_count(0);
+
+    // log out the queue lengths
+    size_t imu_queue_length = _imu_queue->size();
+    size_t observable_queue_length = _observable_queue->size();
+
+    // setup the logger payload and push to binary
+    // NOTE: need to add fields for hist length and processed IMU & GNSS
+    // messages
+    std::array<int32_t, 7> payload = {
+        0,
+        static_cast<int32_t>(imu_queue_length),
+        static_cast<int32_t>(observable_queue_length),
+        0,
+        0,
+        static_cast<int32_t>(dropped_imu),
+        static_cast<int32_t>(dropped_gnss)};
+    _logger->logMessage<7, int32_t>(MSG_ID_DROPPED_MEASUREMENTS,
+                                    DataType::Int32, 0x01, payload);
   }
 
   // wait for user interrupt or internal flag to end
@@ -449,13 +497,22 @@ TimedPlaybackSim::get_next_observation(ImuData &imu_measurement,
   bool imu_avail = _imu_queue->front(imu_measurement);
   bool observable_avail = _observable_queue->front(observable_measurement);
 
+  if (debug_log_get_obs.is_open()) {
+    debug_log_get_obs << "IMU available: " << imu_avail
+                      << " GNSS available: " << observable_avail << std::endl;
+  }
+
   // return the older of the two measurements
   if (imu_avail && observable_avail) {
-    if (imu_measurement.measurement_time <= observable_measurement.timestamp)
+    if (imu_measurement.measurement_time <= observable_measurement.timestamp) {
+      if (debug_log_get_obs.is_open()) {
+        debug_log_get_obs << "Popping IMU measurement. Queue size: "
+                          << _imu_queue->size() << std::endl;
+      }
       return _imu_queue->try_pop(imu_measurement)
                  ? MeasurementType::IMU
                  : MeasurementType::NO_MEASUREMENT;
-    else
+    } else
       return _observable_queue->try_pop(observable_measurement)
                  ? MeasurementType::GNSS
                  : MeasurementType::NO_MEASUREMENT;

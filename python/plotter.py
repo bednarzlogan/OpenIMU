@@ -1,7 +1,7 @@
 import os
 import tkinter as tk
 from tkinter import filedialog, messagebox
-from typing import Any, Dict, List, Optional
+from pandas.core.internals.blocks import IgnoreRaise
 import plotly.subplots as sp
 
 import customtkinter as ctk
@@ -15,11 +15,12 @@ ctk.set_default_color_theme("green")  # Options: "blue" (standard), "green", "da
 PAGE_HEIGHT = 900  # Total default page height in pixels
 MIN_SUBPLOT_HEIGHT = PAGE_HEIGHT // 3
 
+
 def plot_all_selected_fields(
     file_path: str,
-    schema: Dict[str, Any],
-    selected_fields_by_message: Dict[str, List[str]],
-    log_start_time: Optional[str] = None,
+    schema: dict[str, int],
+    selected_fields_by_message: dict[str, list[str]],
+    log_start_time: str | None = None,
     plot_mode: str = "auto",
 ) -> None:
     n_subplots = len(selected_fields_by_message)
@@ -33,7 +34,7 @@ def plot_all_selected_fields(
         cols=1,
         shared_xaxes=False,
         vertical_spacing=0.08,
-        subplot_titles=[f"Message {mid}" for mid in selected_fields_by_message]
+        subplot_titles=[f"Message {mid}" for mid in selected_fields_by_message],
     )
 
     # parse once
@@ -59,22 +60,20 @@ def plot_all_selected_fields(
         # --- 3D static plot ---
         if plot_mode in ("trajectory", "auto") and has3d:
             fig3d = go.Figure()
-            fig3d.add_trace(
+            _ = fig3d.add_trace(
                 go.Scatter3d(
                     x=df["pos_x"],
                     y=df["pos_y"],
                     z=df["pos_z"],
                     mode="lines+markers",
-                    name=f"{msg_id_str} 3D Path"
+                    name=f"{msg_id_str} 3D Path",
                 )
             )
-            fig3d.update_layout(
+            _ = fig3d.update_layout(
                 title=f"3D Trajectory — {msg_id_str}",
                 scene=dict(
-                    xaxis_title="pos_x",
-                    yaxis_title="pos_y",
-                    zaxis_title="pos_z"
-                )
+                    xaxis_title="pos_x", yaxis_title="pos_y", zaxis_title="pos_z"
+                ),
             )
             # save and show
             fig3d.write_html(f"trajectory_3d_{msg_id_str}.html")
@@ -83,15 +82,15 @@ def plot_all_selected_fields(
 
         # --- 2D static plot ---
         if plot_mode in ("trajectory", "auto") and has2d:
-            fig.add_trace(
+            _ = fig.add_trace(
                 go.Scatter(
                     x=df["pos_x"],
                     y=df["pos_y"],
                     mode="lines+markers",
-                    name=f"{msg_id_str} XY Path"
+                    name=f"{msg_id_str} XY Path",
                 ),
                 row=row,
-                col=1
+                col=1,
             )
             continue
 
@@ -100,39 +99,39 @@ def plot_all_selected_fields(
             if field not in df.columns:
                 print(f"[!] Field {field} missing in {msg_id_str}")
                 continue
-            fig.add_trace(
+            _ = fig.add_trace(
                 go.Scatter(
                     x=df.index,
                     y=df[field],
                     mode="lines+markers",
-                    name=f"{msg_id_str}: {field}"
+                    name=f"{msg_id_str}: {field}",
                 ),
                 row=row,
-                col=1
+                col=1,
             )
 
     # finalize layout
     total_height = max(PAGE_HEIGHT, n_subplots * MIN_SUBPLOT_HEIGHT)
-    fig.update_layout(
+    _ = fig.update_layout(
         height=total_height,
         title_text=(
             "Diagnostic Log Visualization"
             + (f" — {log_start_time}" if log_start_time else "")
         ),
-        showlegend=True
+        showlegend=True,
     )
     fig.show()
-    
+
 
 class LogPlotterGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Log Visualizer")
         self.root.geometry("800x600")
-        
+
         # Set minimum size
         self.root.minsize(650, 500)
-        
+
         self.schema = None
         self.frames = {}
         self.selected_message = tk.StringVar()
@@ -141,106 +140,100 @@ class LogPlotterGUI:
         self.selected_fields_by_message = {}
 
         self.target_log: str
-        
+
         # Build the modern UI
         self.build_ui()
-        
+
     def build_ui(self):
         # Create main container with padding
         self.main_frame = ctk.CTkFrame(self.root)
         self.main_frame.pack(fill="both", expand=True, padx=20, pady=20)
-        
+
         # Top section - Header and Load button in a frame
         self.header_frame = ctk.CTkFrame(self.main_frame)
         self.header_frame.pack(fill="x", padx=10, pady=(0, 20))
-        
+
         # App title
         self.title_label = ctk.CTkLabel(
-            self.header_frame, 
-            text="Log Data Visualizer", 
-            font=ctk.CTkFont(size=24, weight="bold")
+            self.header_frame,
+            text="Log Data Visualizer",
+            font=ctk.CTkFont(size=24, weight="bold"),
         )
         self.title_label.pack(side="left", padx=10, pady=10)
-        
+
         # File selection section
         self.file_frame = ctk.CTkFrame(self.main_frame)
         self.file_frame.pack(fill="x", padx=10, pady=(0, 20))
-        
+
         self.load_button = ctk.CTkButton(
             self.file_frame,
             text="Load Log File",
             font=ctk.CTkFont(size=13),
             height=38,
-            command=self.load_log
+            command=self.load_log,
         )
         self.load_button.pack(side="left", padx=10, pady=10)
-        
+
         self.file_label = ctk.CTkLabel(
-            self.file_frame,
-            textvariable=self.current_file,
-            font=ctk.CTkFont(size=13)
+            self.file_frame, textvariable=self.current_file, font=ctk.CTkFont(size=13)
         )
         self.file_label.pack(side="left", padx=10, pady=10, fill="x", expand=True)
-        
+
         # Create two-column layout
         self.content_frame = ctk.CTkFrame(self.main_frame)
         self.content_frame.pack(fill="both", expand=True, padx=10, pady=(0, 20))
         self.content_frame.grid_columnconfigure(0, weight=1)
         self.content_frame.grid_columnconfigure(1, weight=3)
-        
+
         # Left panel - Message selection
         self.left_panel = ctk.CTkFrame(self.content_frame)
         self.left_panel.grid(row=0, column=0, padx=(0, 10), pady=0, sticky="nsew")
-        
+
         self.message_label = ctk.CTkLabel(
-            self.left_panel,
-            text="Message ID",
-            font=ctk.CTkFont(size=16, weight="bold")
+            self.left_panel, text="Message ID", font=ctk.CTkFont(size=16, weight="bold")
         )
         self.message_label.pack(anchor="w", padx=15, pady=(15, 5))
-        
+
         self.message_dropdown = ctk.CTkComboBox(
             self.left_panel,
             variable=self.selected_message,
             state="readonly",
             values=["No messages loaded"],
             height=32,
-            command=self.update_fields
+            command=self.update_fields,
         )
         self.message_dropdown.pack(fill="x", padx=15, pady=(5, 15))
-        
+
         # Placeholder for message stats
         self.stats_label = ctk.CTkLabel(
-            self.left_panel,
-            text="",
-            font=ctk.CTkFont(size=13)
+            self.left_panel, text="", font=ctk.CTkFont(size=13)
         )
         self.stats_label.pack(anchor="w", padx=15, pady=(0, 15))
-        
+
         # Right panel - Fields selection
         self.right_panel = ctk.CTkFrame(self.content_frame)
         self.right_panel.grid(row=0, column=1, padx=0, pady=0, sticky="nsew")
-        
+
         self.fields_label = ctk.CTkLabel(
             self.right_panel,
             text="Available Fields",
-            font=ctk.CTkFont(size=16, weight="bold")
+            font=ctk.CTkFont(size=16, weight="bold"),
         )
         self.fields_label.pack(anchor="w", padx=15, pady=(15, 5))
-        
+
         # Helper text
         self.helper_label = ctk.CTkLabel(
             self.right_panel,
             text="Hold Ctrl to select multiple fields",
             font=ctk.CTkFont(size=12),
-            text_color=("gray50", "gray70")  # (light mode, dark mode)
+            text_color=("gray50", "gray70"),  # (light mode, dark mode)
         )
         self.helper_label.pack(anchor="w", padx=15, pady=(0, 5))
-        
+
         # Create a frame for the listbox and scrollbar
         self.fields_container = ctk.CTkFrame(self.right_panel)
         self.fields_container.pack(fill="both", expand=True, padx=15, pady=(0, 15))
-        
+
         # We need to use a traditional Listbox because CTk doesn't have a multi-select listbox
         # But we style it to match our theme
         self.fields_listbox = tk.Listbox(
@@ -253,28 +246,27 @@ class LogPlotterGUI:
             relief="flat",
             borderwidth=0,
             highlightthickness=0,
-            selectbackground="#1f6aa5"
+            selectbackground="#1f6aa5",
         )
         self.fields_listbox.pack(side="left", fill="both", expand=True)
-        
+
         # Add a scrollbar that matches the theme
         self.scrollbar = ctk.CTkScrollbar(
-            self.fields_container,
-            command=self.fields_listbox.yview
+            self.fields_container, command=self.fields_listbox.yview
         )
         self.scrollbar.pack(side="right", fill="y")
         self.fields_listbox.config(yscrollcommand=self.scrollbar.set)
-        
+
         # Bottom section - Plot button
         self.plot_button = ctk.CTkButton(
             self.main_frame,
             text="Plot Selected Fields",
             font=ctk.CTkFont(size=15, weight="bold"),
             height=40,
-            command=self.plot_fields
+            command=self.plot_fields,
         )
         self.plot_button.pack(pady=(0, 10))
-        
+
         # Status bar
         self.status_var = tk.StringVar(value="Ready")
         self.status_bar = ctk.CTkLabel(
@@ -282,14 +274,14 @@ class LogPlotterGUI:
             textvariable=self.status_var,
             font=ctk.CTkFont(size=12),
             anchor="w",
-            height=25
+            height=25,
         )
         self.status_bar.pack(fill="x", padx=2, pady=2)
-        
+
         # Register theme change detection to update listbox colors
         # self.root.bind("<Configure>", self.check_appearance_mode_change)
         # self.current_appearance = ctk.get_appearance_mode()
-    
+
     def calculate_listbox_bg_color(self):
         """Determine appropriate listbox background color based on theme"""
         appearance = ctk.get_appearance_mode()
@@ -297,7 +289,7 @@ class LogPlotterGUI:
             return "#2b2b2b"  # Dark background for dark mode
         else:
             return "#f9f9f9"  # Light background for light mode
-    
+
     def calculate_listbox_fg_color(self):
         """Determine appropriate listbox text color based on theme"""
         appearance = ctk.get_appearance_mode()
@@ -312,28 +304,30 @@ class LogPlotterGUI:
         )
         if not file_path:
             return
-            
+
         self.status_var.set("Loading log file...")
         self.root.update()
-        
+
         try:
             self.schema = lp.load_schema()
             message_ids = sorted(self.schema.keys())  # e.g., ["0x01", "0x02", ...]
             message_names = [msg["name"] for msg in self.schema.values()]
             self.message_dropdown.configure(values=message_names)
-            
+
             # Update current file display
             file_name = os.path.basename(file_path)
             self.current_file.set(file_name)
 
             # hold file name for log parsing target
             self.current_log = file_path
-            
+
             if message_ids:
                 self.selected_message.set(self.schema[message_ids[0]]["name"])
                 self.update_fields(self.schema[message_ids[0]]["name"])
-                
-            self.status_var.set(f"Loaded {len(self.frames)} message types from {file_name}")
+
+            self.status_var.set(
+                f"Loaded {len(self.frames)} message types from {file_name}"
+            )
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load log file: {str(e)}")
             self.status_var.set("Error loading file")
@@ -342,7 +336,10 @@ class LogPlotterGUI:
         if msg_name is None:
             msg_name = self.selected_message.get()
 
-        msg_id = next((key for key, value in self.schema.items() if value["name"] == msg_name), None)
+        msg_id = next(
+            (key for key, value in self.schema.items() if value["name"] == msg_name),
+            None,
+        )
         self.selected_message.set(self.schema[msg_id]["name"])
 
         if not msg_id:
@@ -362,17 +359,22 @@ class LogPlotterGUI:
                 for i, field in enumerate(self.schema[msg_id]["fields"]):
                     if field in saved_fields:
                         self.fields_listbox.selection_set(i)
-            
+
     def plot_fields(self):
         message_name = self.selected_message.get()
-        msg_id = next((id for id, value in self.schema.items() if value["name"] == message_name), None)
+        msg_id = next(
+            (id for id, value in self.schema.items() if value["name"] == message_name),
+            None,
+        )
         if not msg_id:
-            messagebox.showerror("Error", "Message ID not found.")
+            _ = messagebox.showerror("Error", "Message ID not found.")
             return
 
         selected_indices = self.fields_listbox.curselection()
         if not selected_indices:
-            messagebox.showinfo("No Selection", "Please select at least one field to plot.")
+            _ = messagebox.showinfo(
+                "No Selection", "Please select at least one field to plot."
+            )
             return
 
         selected_columns = [self.fields_listbox.get(i) for i in selected_indices]
@@ -385,7 +387,7 @@ class LogPlotterGUI:
             plot_all_selected_fields(
                 file_path=self.current_log,
                 schema=self.schema,
-                selected_fields_by_message=self.selected_fields_by_message
+                selected_fields_by_message=self.selected_fields_by_message,
             )
             self.status_var.set("Plotting complete.")
         except Exception as e:
