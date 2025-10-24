@@ -72,4 +72,13 @@ public:
 
   // virtual getter for dropped measurement count
   virtual size_t get_dropped_measurement_count(bool imu) const noexcept = 0;
+
+  // virtual getter for queues full status
+  virtual bool queues_full(bool imu) const noexcept = 0;
+
+  // virtual getter for queues empty status
+  virtual bool queues_empty(bool imu) const noexcept = 0;
+
+  // virtual getter for solution time
+  virtual double solution_time() const noexcept = 0;
 };

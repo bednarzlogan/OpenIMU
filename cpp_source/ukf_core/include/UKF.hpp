@@ -76,6 +76,16 @@ public:
                : _gnss_queue->get_dropped_count();
   }
 
+  // signal if meausrement queues are open
+  bool queues_full(bool imu) const noexcept {
+    return imu ? _imu_queue->is_full() : _gnss_queue->is_full();
+  }
+
+  // helper to check if queues are empty
+  bool queues_empty(bool imu) const noexcept {
+    return imu ? _imu_queue->is_empty() : _gnss_queue->is_empty();
+  }
+
 private:
   // config
   UKFParams _params;

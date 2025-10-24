@@ -8,6 +8,7 @@
 #include <nlohmann/json.hpp>
 #include <sstream>
 #include <string>
+#include <thread>
 
 #include "logger.hpp"
 #include "logger_conversions.hpp"
@@ -175,14 +176,16 @@ MeasurementType TimedPlaybackSim::parse_line(const std::string &line,
       return NO_MEASUREMENT;
     }
 
+    // copy in observation info -- ensure that no elements are
+    // floating/undefined
     measurement.timestamp = gnss_measurement_parts[0];
+    measurement.R.setIdentity();
     for (int j = 0; j < Z; ++j) {
       measurement.observation(j) = gnss_measurement_parts[j + 1];
     }
     for (int j = 0; j < Z; ++j) {
       measurement.R(j, j) = gnss_measurement_parts[j + 1 + Z];
     }
-    //_observables->push(measurement);
 
     // populate the reference so that outside functions can access it
     observable_data = measurement;
@@ -190,7 +193,7 @@ MeasurementType TimedPlaybackSim::parse_line(const std::string &line,
     // log out correctly formatted GNSS
     Eigen::Matrix<double, Z + 1, 1> gnss;
     gnss(0, 0) = measurement.timestamp;
-    gnss.tail(Z) = measurement.observation;
+    gnss.head(Z) = measurement.observation;
     log_vector_out(*_logger, gnss, LoggedVectorType::GNSS);
 
     return GNSS;
@@ -200,9 +203,36 @@ MeasurementType TimedPlaybackSim::parse_line(const std::string &line,
   return NO_MEASUREMENT;
 }
 
-void pass_measurements(bool &imu_valid, bool &gnss_valid,
-                       const ImuData &imu_data, const Observable &gnss_data,
-                       std::shared_ptr<Estimator> estimator) {
+bool TimedPlaybackSim::wait_until_queue_has_space(
+    bool imu, std::chrono::milliseconds timeout,
+    const std::shared_ptr<Estimator> &est) noexcept {
+  using clock = std::chrono::steady_clock;
+  const auto deadline = clock::now() + timeout;
+  auto sleep_us = std::chrono::microseconds(200);
+
+  while (_running) {
+    if (!est->queues_full(imu))
+      return true; // wait until NOT full
+    if (clock::now() >= deadline)
+      return false;                        // timeout
+    std::this_thread::sleep_for(sleep_us); // backoff
+    sleep_us = std::min(sleep_us * 2, std::chrono::microseconds(5000));
+  }
+  return false; // stopped while waiting
+}
+
+void TimedPlaybackSim::pass_measurements(bool &imu_valid, bool &gnss_valid,
+                                         const ImuData &imu_data,
+                                         const Observable &gnss_data,
+                                         std::shared_ptr<Estimator> estimator) {
+  // ensure that the queues are not full before passing measurements
+  if (imu_valid && !wait_until_queue_has_space(
+                       true, std::chrono::milliseconds(2000), estimator))
+    return;
+  if (gnss_valid && !wait_until_queue_has_space(
+                        false, std::chrono::milliseconds(2000), estimator))
+    return;
+
   if (imu_valid && gnss_valid) {
     // process the earlier of the GNSS and IMU data
     bool imu_earlier = imu_data.measurement_time <= gnss_data.timestamp;
@@ -216,25 +246,38 @@ void pass_measurements(bool &imu_valid, bool &gnss_valid,
                            << imu_data.matrix_form_measurement.transpose()
                            << std::endl;
       }
-      estimator->read_imu(imu_data);
-      imu_valid = false;
+      if (!estimator->queues_full(true)) {
+        estimator->read_imu(imu_data);
+        imu_valid = false;
+      }
     } else {
       // process GNSS data
       if (debug_log_playback.is_open()) {
         debug_log_playback << "Passing GNSS data to UKF:\n"
                            << gnss_data.observation.transpose() << std::endl;
       }
-      estimator->read_gps(gnss_data);
-      gnss_valid = false;
+      if (!estimator->queues_full(false)) {
+        estimator->read_gps(gnss_data);
+        gnss_valid = false;
+      }
     }
   } else if (imu_valid) {
     // process IMU data
-    estimator->read_imu(imu_data);
-    imu_valid = false;
+    if (debug_log_playback.is_open()) {
+      debug_log_playback << "Passing IMU data to UKF:\n"
+                         << imu_data.matrix_form_measurement.transpose()
+                         << std::endl;
+    }
+    if (!estimator->queues_full(true)) {
+      estimator->read_imu(imu_data);
+      imu_valid = false;
+    }
   } else if (gnss_valid) {
     // process GNSS data
-    estimator->read_gps(gnss_data);
-    gnss_valid = false;
+    if (!estimator->queues_full(false)) {
+      estimator->read_gps(gnss_data);
+      gnss_valid = false;
+    }
   }
 }
 
@@ -257,6 +300,10 @@ void TimedPlaybackSim::start_simulation(std::shared_ptr<Estimator> estimator,
     _running = false;
     return;
   }
+
+  // start UKF
+  estimator->start_filter(period);
+  _running = true;
 
   std::string imu_line;
   std::string gnss_line;
@@ -300,9 +347,34 @@ void TimedPlaybackSim::start_simulation(std::shared_ptr<Estimator> estimator,
                    LoggedVectorType::NominalState);
   }
 
+  // allow time for the estimator to process the last measurement
+  std::this_thread::sleep_for(std::chrono::milliseconds(10000));
+
+  // ensure that the queue is empty before stopping the filter
+  auto drained = [&] {
+    constexpr double eps = 1e-6;
+    const bool q_empty =
+        estimator->queues_empty(true) && estimator->queues_empty(false);
+    const bool at_tip =
+        estimator->solution_time() + eps >= imu_data.measurement_time;
+
+    std::cout << "Drained: " << q_empty << ", At Tip: " << at_tip
+              << " with measurement time " << imu_data.measurement_time
+              << std::endl;
+    return q_empty && at_tip;
+  };
+
+  // wait up to ~2 minutes
+  auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(120000);
+  while (!drained() && std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
   // wait for user interrupt or internal flag to end
   _running = false;
   std::cout << "Simulation stopped." << std::endl;
+  estimator->stop_filter();
 }
 
 void TimedPlaybackSim::stop_simulation() {

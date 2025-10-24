@@ -12,6 +12,7 @@ using json = nlohmann::json;
 
 // TMP
 static std::ofstream debug_log("worker_loop_debug.csv", std::ios::app);
+static std::ofstream ukf_log("ukf_trace_log.txt", std::ios::app);
 
 void UKF::read_configs(std::ifstream &inFile) {
   UKFParams hold_config;
@@ -71,8 +72,6 @@ UKF::UKF(const std::string &configs_path) {
   // TMP PROCESS NOISE
   _Q.setIdentity();
   _Q *= 1e-3;
-
-  ukf_log() << "[UKF] _lambda = " << _lambda << ", _gamma = " << _gamma << "\n";
 
   // create the queues for holding incoming measurements
   _imu_queue = std::make_unique<ThreadQueue<ImuData>>(1000);
@@ -331,10 +330,6 @@ void UKF::initialize(const StateVec &initial_state,
 void UKF::generate_sigma_points(const StateVec &mu, const CovMat &P,
                                 SigmaPointArray &sigma_points) {
 
-  // tmp logs
-  ukf_log() << "Initial covariance diag: " << P.diagonal().transpose() << "\n";
-  ukf_log() << "Initial state mu: " << mu.transpose() << "\n";
-
   // scale the covariance matrix
   CovMat scaled_P = (N + _lambda) * P;
 
@@ -359,17 +354,9 @@ void UKF::generate_sigma_points(const StateVec &mu, const CovMat &P,
     sigma_points[i + 1] = mu + _gamma * S.col(i);
     sigma_points[N + i + 1] = mu - _gamma * S.col(i);
   }
-
-  ukf_log() << "[UKF] Raw P:\n" << P << "\n";
-  ukf_log() << "[UKF] Scaled P:\n" << scaled_P << "\n";
 }
 
 void UKF::predict(const ControlInput &u, double dt) {
-
-  // tmp debug printouts
-  // std::cout << "Processing control input:\n"
-  //           << u << "\n with dt " << dt << std::endl;
-
   // use the nomlinear dynamics to propagate the sigma points into predicted
   // states
   SigmaPointArray sigma_points;
@@ -404,16 +391,13 @@ void UKF::predict(const ControlInput &u, double dt) {
 
   // debug logging
   if (debug_log.is_open()) {
-    debug_log << "Current state:\n"
+    debug_log << "Time update -- current state:\n"
               << _x.transpose() << "\nLast control input:\n"
               << u.transpose() << std::endl;
   }
 }
 
 void UKF::update(const MeasVec &z, const MeasCov &R) {
-  // tmp debug printouts
-  std::cout << "Processing measurement input: " << z << std::endl;
-
   // propagate through measurement model
   std::array<MeasVec, NumSigma> z_sigma;
   for (uint8_t i = 0; i < NumSigma; ++i) {
@@ -442,7 +426,14 @@ void UKF::update(const MeasVec &z, const MeasCov &R) {
   // Kalman gain
   Eigen::Matrix<double, N, Z> K = P_xz * S.inverse();
 
-  // state update
+  // state updates
   _x += K * (z - z_pred);
   _P -= K * S * K.transpose();
+
+  // debug logging
+  if (debug_log.is_open()) {
+    debug_log << "Measurement update -- current state:\n"
+              << _x.transpose() << "\nObservation:\n"
+              << z.transpose() << std::endl;
+  }
 }

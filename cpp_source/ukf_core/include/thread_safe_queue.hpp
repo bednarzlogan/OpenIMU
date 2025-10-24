@@ -75,6 +75,7 @@ public:
     if (m_queue.empty())
       return false;
     result = m_queue.front();
+
     m_queue.pop_front();
     return true;
   }
@@ -144,6 +145,22 @@ public:
   size_t size() const noexcept {
     std::lock_guard<std::mutex> lock(m_mutex);
     return m_queue.size();
+  }
+
+  /**
+   * @brief Returns true if the queue is full, false otherwise.
+   */
+  bool is_full() const noexcept {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_queue.full();
+  }
+
+  /**
+   * @brief Returns true if the queue is full, false otherwise.
+   */
+  bool is_empty() const noexcept {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_queue.empty();
   }
 
 private:

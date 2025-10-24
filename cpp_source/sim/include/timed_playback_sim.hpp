@@ -1,11 +1,11 @@
 #pragma once
 
-#include <array>
-#include <string>
-
 #include "estimator_interface.hpp"
 #include "logger.hpp"
 #include "ukf_defs.hpp"
+
+#include <array>
+#include <string>
 
 enum MeasurementType { IMU = 0, GNSS = 1, NO_MEASUREMENT = 2 };
 
@@ -48,6 +48,30 @@ public:
    * @return Filesystem path to log
    */
   inline const std::filesystem::path &get_log_path() { return _log_path; }
+
+  /**
+   * @brief Wait until a queue has space before sending measurements
+   *
+   * @param imu A bool indicating whether to wait for IMU data.
+   * @param timeout The maximum time to wait for space in the queue.
+   * @return True if space was available within the timeout, false otherwise.
+   */
+  bool wait_until_queue_has_space(
+      bool imu, std::chrono::milliseconds timeout,
+      const std::shared_ptr<Estimator> &estimator) noexcept;
+
+  /**
+   * @brief Pass measurements to the estimator
+   *
+   * @param imu_valid A bool indicating whether IMU data is valid.
+   * @param gnss_valid A bool indicating whether GNSS data is valid.
+   * @param imu_data The IMU data to pass to the estimator.
+   * @param gnss_data The GNSS data to pass to the estimator.
+   * @param estimator The estimator to pass the measurements to.
+   */
+  void pass_measurements(bool &imu_valid, bool &gnss_valid,
+                         const ImuData &imu_data, const Observable &gnss_data,
+                         std::shared_ptr<Estimator> estimator);
 
 private:
   // configs and string info
