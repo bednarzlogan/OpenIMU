@@ -30,63 +30,68 @@ add_library(ukf::core ALIAS ukf_core)
 
 # ========= Simulator library (optional) =========
 if(UKF_BUILD_SIM)
-  file(GLOB_RECURSE SIM_SOURCES CONFIGURE_DEPENDS
+    file(GLOB_RECURSE SIM_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/sim/src/*.cpp
   )
-  add_library(ukf_sim STATIC ${SIM_SOURCES})
-  target_include_directories(ukf_sim PUBLIC
+    add_library(ukf_sim STATIC ${SIM_SOURCES})
+    target_include_directories(ukf_sim PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/sim/include
     ${CMAKE_CURRENT_SOURCE_DIR}/logging
   )
-  target_link_libraries(ukf_sim PUBLIC
+    target_link_libraries(ukf_sim PUBLIC
     ukf::core
     Eigen3::Eigen
     Boost::boost
     Threads::Threads
   )
-  add_library(ukf::sim ALIAS ukf_sim)
+    add_library(ukf::sim ALIAS ukf_sim)
 endif()
 
 # ========= Runnable app (optional) =========
 if(UKF_BUILD_SIM AND UKF_BUILD_SIM_APP)
-  add_executable(ukf_playback main.cpp)
-  target_link_libraries(ukf_playback PRIVATE ukf::sim Threads::Threads)
-  add_custom_command(TARGET ukf_playback POST_BUILD
+    add_executable(ukf_playback main.cpp)
+    target_link_libraries(ukf_playback PRIVATE ukf::sim Threads::Threads)
+    add_custom_command(TARGET ukf_playback POST_BUILD
+    # copy config/
     COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_CURRENT_SOURCE_DIR}/config
             $<TARGET_FILE_DIR:ukf_playback>/config
+    # copy data/
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/data
+            $<TARGET_FILE_DIR:ukf_playback>/data
   )
 endif()
 
 # ========= Tests (optional) =========
 if(UKF_BUILD_TESTS)
-  include(CTest)  
-  include(FetchContent)
-  FetchContent_Declare(
+    include(CTest)
+    include(FetchContent)
+    FetchContent_Declare(
     googletest
     URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
   )
-  set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-  FetchContent_MakeAvailable(googletest)
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(googletest)
 
-  add_executable(ukf_tests
+    add_executable(ukf_tests
     tests/test_retrodict.cpp
     tests/test_sim_scenario.cpp
   )
-  target_link_libraries(ukf_tests PRIVATE
+    target_link_libraries(ukf_tests PRIVATE
     ukf::core
     GTest::gtest_main
   )
-  if(UKF_BUILD_SIM)
-    target_link_libraries(ukf_tests PRIVATE ukf::sim)
-  endif()
+    if(UKF_BUILD_SIM)
+        target_link_libraries(ukf_tests PRIVATE ukf::sim)
+    endif()
 
-  add_custom_command(TARGET ukf_tests POST_BUILD
+    add_custom_command(TARGET ukf_tests POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_CURRENT_SOURCE_DIR}/config
             $<TARGET_FILE_DIR:ukf_tests>/config
   )
 
-  include(GoogleTest)
-  gtest_discover_tests(ukf_tests)
+    include(GoogleTest)
+    gtest_discover_tests(ukf_tests)
 endif()

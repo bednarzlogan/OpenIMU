@@ -87,7 +87,7 @@
     - zpred_vel_x
     - zpred_vel_y
     - zpred_vel_z
-    
+
 "0x07":
   name: Measurement Residual (z - z_pred)
   type: float32
@@ -112,7 +112,7 @@
     - gnss_vel_x
     - gnss_vel_y
     - gnss_vel_z
-  
+
 "0x09":
   name: GNSS
   type: float32
@@ -130,12 +130,12 @@
   name: Env Latency
   type: float32
   length: 2
-  fields: 
-    - kind, 
+  fields:
+    - kind,
     - latency_ms
 
 "0x11":
-  name: Rejected IMU Measurement  
+  name: Rejected IMU Measurement
   type: float32
   length: 7
   fields:
@@ -159,3 +159,16 @@
     - gnss_vel_x
     - gnss_vel_y
     - gnss_vel_z
+
+"0x13":
+  name: Dropped Measurement Diagnostic
+  type: int32
+  length: 7
+  fields:
+    - hist_length
+    - imu_queue_length
+    - gnss_queue_length
+    - number_processed_imu
+    - number_processed_gnss
+    - number_dropped_imu
+    - number_dropped_gnss

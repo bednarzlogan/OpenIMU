@@ -1,105 +1,98 @@
 #pragma once
 
-#include <memory>
-#include <string>
-#include <array>
-#include <atomic>
-
-#include "logger.hpp"
-#include "thread_safe_queue.hpp"
-#include "ukf_defs.hpp"
 #include "estimator_interface.hpp"
+#include "logger.hpp"
+#include "ukf_defs.hpp"
 
-enum MeasurementType {
-    IMU = 0,
-    GNSS = 1,
-    NO_MEASUREMENT = 2
-};
+#include <array>
+#include <string>
+
+enum MeasurementType { IMU = 0, GNSS = 1, NO_MEASUREMENT = 2 };
 
 /**
- * @brief A playback simulator that serves observations based on the timestamps in
- * the provided measurement files.
+ * @brief A playback simulator that serves observations based on the timestamps
+ * in the provided measurement files.
  */
- class TimedPlaybackSim {
- public:
-    /**
-    * @brief Constructs a TimedPlaybackSim object.
-    * 
-    * @param config_path Path to the configurations for the simulator.
-    */
-    TimedPlaybackSim(const std::string& config_path);
+class TimedPlaybackSim {
+public:
+  /**
+   * @brief Constructs a TimedPlaybackSim object.
+   *
+   * @param config_path Path to the configurations for the simulator.
+   */
+  TimedPlaybackSim(const std::string &config_path);
 
-    /**
-    * @brief Starts the playback simulation.
-    *
-    * @param estimator The estimator to which the measurements will be sent.
-    */
-    void start_simulation(std::shared_ptr<Estimator> estimator, std::chrono::milliseconds period);
+  /**
+   * @brief Starts the playback simulation.
+   *
+   * @param estimator The estimator to which the measurements will be sent.
+   */
+  void start_simulation(std::shared_ptr<Estimator> estimator,
+                        std::chrono::milliseconds period);
 
-    /**
-    * @brief Stops the playback simulation.
-    */
-    void stop_simulation(); 
+  /**
+   * @brief Stops the playback simulation.
+   */
+  void stop_simulation();
 
-    /**
-    * @brief Gets the next observation based on the current time.
-    * 
-    * @return The next observation as a string.
-    */
-    MeasurementType get_next_observation(ImuData& imu_measurement, Observable& observable_measurement);
+  /**
+   * @brief Gets the running status of the simulator.
+   *
+   * @return The running status as a boolean.
+   */
+  bool is_running() const { return _running; }
 
-    /**
-    * @brief Gets the running status of the simulator.
-    * 
-    * @return The running status as a boolean.
-    */
-    bool is_running() const {return _running || !_imu_queue->empty() || !_observable_queue->empty();}
+  /**
+   * @brief Gets the path to the output binary log
+   *
+   * @return Filesystem path to log
+   */
+  inline const std::filesystem::path &get_log_path() { return _log_path; }
 
-    /**
-    * @brief Gets the path to the output binary log
-    * 
-    * @return Filesystem path to log
-    */
-    inline const std::filesystem::path& get_log_path() { return _log_path; }
-    
+  /**
+   * @brief Wait until a queue has space before sending measurements
+   *
+   * @param imu A bool indicating whether to wait for IMU data.
+   * @param timeout The maximum time to wait for space in the queue.
+   * @return True if space was available within the timeout, false otherwise.
+   */
+  bool wait_until_queue_has_space(
+      bool imu, std::chrono::milliseconds timeout,
+      const std::shared_ptr<Estimator> &estimator) noexcept;
+
+  /**
+   * @brief Pass measurements to the estimator
+   *
+   * @param imu_valid A bool indicating whether IMU data is valid.
+   * @param gnss_valid A bool indicating whether GNSS data is valid.
+   * @param imu_data The IMU data to pass to the estimator.
+   * @param gnss_data The GNSS data to pass to the estimator.
+   * @param estimator The estimator to pass the measurements to.
+   */
+  void pass_measurements(bool &imu_valid, bool &gnss_valid,
+                         const ImuData &imu_data, const Observable &gnss_data,
+                         std::shared_ptr<Estimator> estimator);
+
 private:
-    // configs and string info
-    std::string _config_path;  // path to the configuration file
-    std::string _measurement_file_path;  // path to the measurement file
-    std::string _imu_data_path;  // path to the IMU data file
-    float _sample_rate;  // rate of the fastest sensor 
+  // configs and string info
+  std::string _config_path;           // path to the configuration file
+  std::string _measurement_file_path; // path to the measurement file
+  std::string _imu_data_path;         // path to the IMU data file
 
-    // logger 
-    std::filesystem::path _log_path;
-    std::unique_ptr<Logger> _logger;
+  // logger
+  std::filesystem::path _log_path;
+  std::unique_ptr<Logger> _logger;
 
-    // we require that the following keys are present in the configuration file
-    std::array<std::string, 4> required_keys = {
-        "sample_rate", 
-        "imu_data_path", 
-        "measurement_file_path",
-        "max_measurements"
-    };
+  // we require that the following keys are present in the configuration file
+  std::array<std::string, 4> required_keys = {"sample_rate", "imu_data_path",
+                                              "measurement_file_path",
+                                              "max_measurements"};
 
-    // the reader will dump everything into these as fast as possible
-    std::unique_ptr<ThreadQueue<ImuData>> _imu_measurements;  // array to store IMU measurements
-    std::unique_ptr<ThreadQueue<Observable>> _observables;  // array to store observable measurements
+  double _current_time; // current time in the simulation
+  bool _running{true};  // flags simulation is running
 
-    // the timer will serve measurements from the above into here at the sensor sample rates
-    std::unique_ptr<ThreadQueue<ImuData>> _imu_queue;  // queue for IMU measurements
-    std::unique_ptr<ThreadQueue<Observable>> _observable_queue;  // Queue for observable measurement
+  void load_configurations(); // load configurations from the file
 
-    double _current_time;  // current time in the simulation
-    std::atomic<bool> _running{true};  // flag to indicate if the simulation is running
-    std::atomic<bool> _producer_done{false};
-
-    // early wake vars
-    std::mutex cv_mtx_;
-    std::condition_variable cv_;
-
-    void load_configurations();  // load configurations from the file
-
-    void batcher_thread();
-    void queue_setter_timer();
-    void parse_line(const std::string& line, const std::string& source);
- };
+  MeasurementType parse_line(const std::string &line, const std::string &source,
+                             ImuData &imu_data, Observable &observable_data);
+};

@@ -35,7 +35,7 @@ static void wait_until(std::function<bool()> pred, int ms_timeout = 200) {
 }
 
 TEST(UKF_Retrodict, RollbackReplayBasic) {
-  UKF ukf("config/ukf_minimal.json");
+  UKF ukf("config/system_constants.json");
   ukf.start_filter(std::chrono::milliseconds(2));
 
   // history capacity + sampling setup
@@ -44,11 +44,17 @@ TEST(UKF_Retrodict, RollbackReplayBasic) {
   const double dt = 1.0 / fs;
 
   // fill history exactly to capacity: times 0, dt, ..., (cap-1)*dt
-  for (int k = 0; k < cap; ++k) {
+  for (int k = 1; k < cap; ++k) {
     ukf.read_imu(makeImu(k * dt));
   }
 
   // choose tz strictly inside the history window to force replay
+  // *** WAIT FIRST *** (give the worker time to turn IMU into snapshots)
+  wait_until([&]{
+    return ukf.history_size() >= 5u;           // or == cap if you prefer
+    // or: return ukf.solution_time() >= (cap-1)*dt - 1e-9;
+  }, 5 * 60 * 1000); // up to 5 minutes while you debug
+
   ASSERT_GT(ukf.history_size(), 0u);
   const double t_front = ukf.hist_front_time();
   const double t_back  = ukf.hist_back_time();
@@ -60,6 +66,13 @@ TEST(UKF_Retrodict, RollbackReplayBasic) {
   // (If this ever fails, adjust the number of IMU samples or hist_cap in the UKF.)
   ASSERT_LE(t_front - 1e-9, tz);
   ASSERT_GE(t_back  + 1e-9, tz);
+
+  // debug print
+  std::cerr << "front=" << ukf.hist_front_time()
+            << " back="  << ukf.hist_back_time()
+            << " tz="    << tz
+            << " size="  << ukf.history_size() << "\n";
+
 
   // GNSS at tz s (inside history)
   ukf.read_gps(makeGnss(tz));
