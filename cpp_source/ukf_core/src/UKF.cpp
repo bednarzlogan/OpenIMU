@@ -410,9 +410,6 @@ void UKF::update(const MeasVec &z, const MeasCov &R) {
     z_pred += _Wm[i] * z_sigma[i];
   }
 
-  // log resudial in this prediction
-  Eigen::Matrix<double, Z, 1> residual = z - z_pred;
-
   // innovation covariance and cross-covariance
   MeasCov S = R;
   Eigen::Matrix<double, N, Z> P_xz = Eigen::Matrix<double, N, Z>::Zero();

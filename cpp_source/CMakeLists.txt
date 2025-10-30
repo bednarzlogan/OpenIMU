@@ -3,9 +3,9 @@ project(ukf_realtime LANGUAGES CXX)
 
 option(UKF_BUILD_SIM       "Build timed playback simulator lib" ON)
 option(UKF_BUILD_SIM_APP   "Build a runnable playback app"      ON)
-option(UKF_BUILD_TESTS     "Build GoogleTest-based tests"       OFF)
+option(UKF_BUILD_TESTS     "Build GoogleTest-based tests"       ON)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -27,6 +27,9 @@ target_link_libraries(ukf_core PUBLIC
   Threads::Threads
 )
 add_library(ukf::core ALIAS ukf_core)
+
+# propagate C++ standard to upstream targets
+target_compile_features(ukf_core PUBLIC cxx_std_17)
 
 # ========= Simulator library (optional) =========
 if(UKF_BUILD_SIM)
