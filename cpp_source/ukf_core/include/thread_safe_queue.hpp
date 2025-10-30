@@ -1,8 +1,8 @@
 #pragma once
 
+#include <atomic>
 #include <boost/circular_buffer.hpp>
 #include <condition_variable>
-#include <iostream> // TMP
 #include <mutex>
 
 /**
@@ -25,6 +25,7 @@ public:
     m_maxSize = maxSize;
     m_dropOldest = dropOldest;
     m_queue.set_capacity(maxSize);
+    dropped_count_.store(0, std::memory_order_relaxed);
   };
 
   /**
@@ -171,5 +172,5 @@ private:
   size_t m_maxSize = 0; ///< Max size of the queue, 0 for unlimited size
   bool m_dropOldest =
       false; ///< If true, drop the oldest element when the queue is full
-  std::atomic<size_t> dropped_count_{0}; ///< Count of dropped elements
+  std::atomic<size_t> dropped_count_; ///< Count of dropped elements
 };

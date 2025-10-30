@@ -46,7 +46,7 @@ void UKF::read_configs(std::ifstream &inFile) {
   _params = hold_config; // assign configurations
 }
 
-UKF::UKF(const std::string &configs_path) {
+UKF::UKF(const std::string &configs_path, bool default_init) {
   // read in configurables
   // load in the system configurations
   std::ifstream inFile(configs_path);
@@ -79,6 +79,21 @@ UKF::UKF(const std::string &configs_path) {
 
   // retrodiction queue sizing
   hist.set_capacity(hist_cap);
+
+  // if we are using default init, set a dummy zeros state:
+  if (default_init) {
+    StateVec initial_state;
+    CovMat initial_covariance;
+    initial_covariance.setZero();
+    initial_covariance.diagonal() << 0.5, 0.5, 0.5, // positions
+        0.1, 0.1, 0.1,                              // velocitie
+        0.25, 0.25, 0.25,                           // attitude
+        1e-4, 1e-4, 1e-4,                           // accelerom
+        1e-4, 1e-4, 1e-4;                           // gyro bias
+    initial_state = 1e-3 * Eigen::Matrix<double, N, 1>::Ones();
+
+    initialize(initial_state, initial_covariance);
+  }
 }
 
 void UKF::start_filter(std::chrono::milliseconds period) {

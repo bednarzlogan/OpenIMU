@@ -19,7 +19,7 @@ public:
       2 * N + 1; // minimum sample from UKF theory
 
   // alternate constructor for default initialization
-  UKF(const std::string &configs_path);
+  UKF(const std::string &configs_path, bool default_init = true);
   ~UKF() { stop_filter(); }
 
   // sets params for system and gets measurement file path
