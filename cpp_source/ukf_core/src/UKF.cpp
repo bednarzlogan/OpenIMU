@@ -410,6 +410,10 @@ void UKF::predict(const ControlInput &u, double dt) {
               << _x.transpose() << "\nLast control input:\n"
               << u.transpose() << std::endl;
   }
+
+  if (ukf_log.is_open()) {
+    ukf_log << _x.transpose() << std::endl;
+  }
 }
 
 void UKF::update(const MeasVec &z, const MeasCov &R) {
@@ -447,5 +451,10 @@ void UKF::update(const MeasVec &z, const MeasCov &R) {
     debug_log << "Measurement update -- current state:\n"
               << _x.transpose() << "\nObservation:\n"
               << z.transpose() << std::endl;
+  }
+
+  // UKF logging
+  if (ukf_log.is_open()) {
+    ukf_log << _x.transpose() << std::endl;
   }
 }
