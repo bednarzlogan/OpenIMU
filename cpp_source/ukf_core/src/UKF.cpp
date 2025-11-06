@@ -12,7 +12,17 @@ using json = nlohmann::json;
 
 // TMP
 static std::ofstream debug_log("worker_loop_debug.csv", std::ios::app);
-static std::ofstream ukf_log("ukf_trace_log.txt", std::ios::app);
+static std::ofstream ukf_log("ukf_trace_log.csv", std::ios::app);
+
+// Define the desired format:
+// Precision: Eigen::StreamPrecision (or a specific number like 4)
+// Flags: Eigen::DontAlignCols (disables column alignment for speed)
+// CoeffSeparator: ", " (comma and a space)
+// RowSeparator: "\n" (newline character)
+// RowPrefix/Suffix: "" (empty strings)
+// MatrixPrefix/Suffix: "" (empty strings)
+const static Eigen::IOFormat
+    CSVFormat(Eigen::StreamPrecision, Eigen::DontAlignCols, ", ", "\n", "", "");
 
 void UKF::read_configs(std::ifstream &inFile) {
   UKFParams hold_config;
@@ -79,6 +89,11 @@ UKF::UKF(const std::string &configs_path) {
 
   // retrodiction queue sizing
   hist.set_capacity(hist_cap);
+
+  if (ukf_log.is_open()) {
+    ukf_log << "x,y,z,vx,vy,vz,roll,pitch,yaw,bax,bay,baz,bgx,bgy,bgz"
+            << std::endl;
+  }
 }
 
 void UKF::start_filter(std::chrono::milliseconds period) {
@@ -395,6 +410,10 @@ void UKF::predict(const ControlInput &u, double dt) {
               << _x.transpose() << "\nLast control input:\n"
               << u.transpose() << std::endl;
   }
+
+  if (ukf_log.is_open()) {
+    ukf_log << _x.transpose().format(CSVFormat) << std::endl;
+  }
 }
 
 void UKF::update(const MeasVec &z, const MeasCov &R) {
@@ -435,5 +454,9 @@ void UKF::update(const MeasVec &z, const MeasCov &R) {
     debug_log << "Measurement update -- current state:\n"
               << _x.transpose() << "\nObservation:\n"
               << z.transpose() << std::endl;
+  }
+
+  if (ukf_log.is_open()) {
+    ukf_log << _x.transpose().format(CSVFormat) << std::endl;
   }
 }

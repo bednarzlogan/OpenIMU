@@ -8,7 +8,7 @@ using namespace std;
 
 constexpr int N = 15;
 constexpr int M = 6;
-constexpr int Z = 6;
+constexpr int Z = 3;
 constexpr int NumSigma = 2 * N + 1;
 
 using StateVec = Eigen::Matrix<double, N, 1>;

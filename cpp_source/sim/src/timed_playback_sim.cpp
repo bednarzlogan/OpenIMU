@@ -89,7 +89,7 @@ MeasurementType TimedPlaybackSim::parse_line(const std::string &line,
                                              Observable &observable_data) {
   std::stringstream ss(line);
   std::string value;
-  std::array<double, Z + 1> measurement_parts;
+  std::array<double, M + 1> measurement_parts;
   std::array<double, 2 * Z + 1> gnss_measurement_parts;
   ImuData imu_measurement;
   Observable measurement;
@@ -103,7 +103,8 @@ MeasurementType TimedPlaybackSim::parse_line(const std::string &line,
   uint8_t i = 0;
   if (source == "imu") {
     while (std::getline(ss, value, ',')) {
-      if (i >= Z + 1) {
+      // std::cout << value << std::endl;
+      if (i >= M + 1) {
         std::cerr << "Too many elements in IMU CSV row!" << std::endl;
         return NO_MEASUREMENT;
       }
@@ -133,7 +134,7 @@ MeasurementType TimedPlaybackSim::parse_line(const std::string &line,
 
     measurement.timestamp = measurement_parts[0];
 
-    for (int j = 0; j < Z; ++j) {
+    for (int j = 0; j < M; ++j) {
       imu_measurement.matrix_form_measurement(j) = measurement_parts[j + 1];
     }
     imu_measurement.measurement_time = measurement_parts[0];

@@ -106,9 +106,9 @@ inline void log_vector_out(Logger &diag_logger,
                                          convertVectorForLogging<Z + 1>(vec));
     break;
   case LoggedVectorType::RejectedIMU:
-    diag_logger.logMessage<Z + 1, float>(MSG_ID_REJECTED_IMU, DataType::Float32,
+    diag_logger.logMessage<M + 1, float>(MSG_ID_REJECTED_IMU, DataType::Float32,
                                          0x01,
-                                         convertVectorForLogging<Z + 1>(vec));
+                                         convertVectorForLogging<M + 1>(vec));
     break;
   case LoggedVectorType::RejectedGNSS:
     diag_logger.logMessage<2 * Z + 1, float>(
