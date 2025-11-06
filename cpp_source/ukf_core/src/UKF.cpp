@@ -56,7 +56,7 @@ void UKF::read_configs(std::ifstream &inFile) {
   _params = hold_config; // assign configurations
 }
 
-UKF::UKF(const std::string &configs_path) {
+UKF::UKF(const std::string &configs_path, bool default_init) {
   // read in configurables
   // load in the system configurations
   std::ifstream inFile(configs_path);
@@ -93,6 +93,21 @@ UKF::UKF(const std::string &configs_path) {
   if (ukf_log.is_open()) {
     ukf_log << "x,y,z,vx,vy,vz,roll,pitch,yaw,bax,bay,baz,bgx,bgy,bgz"
             << std::endl;
+  }
+
+  // if we are using default init, set a dummy zeros state:
+  if (default_init) {
+    StateVec initial_state;
+    CovMat initial_covariance;
+    initial_covariance.setZero();
+    initial_covariance.diagonal() << 0.5, 0.5, 0.5, // positions
+        0.1, 0.1, 0.1,                              // velocitie
+        0.25, 0.25, 0.25,                           // attitude
+        1e-4, 1e-4, 1e-4,                           // accelerom
+        1e-4, 1e-4, 1e-4;                           // gyro bias
+    initial_state = 1e-3 * Eigen::Matrix<double, N, 1>::Ones();
+
+    initialize(initial_state, initial_covariance);
   }
 }
 
@@ -428,9 +443,6 @@ void UKF::update(const MeasVec &z, const MeasCov &R) {
   for (uint8_t i = 0; i < NumSigma; ++i) {
     z_pred += _Wm[i] * z_sigma[i];
   }
-
-  // log resudial in this prediction
-  Eigen::Matrix<double, Z, 1> residual = z - z_pred;
 
   // innovation covariance and cross-covariance
   MeasCov S = R;
