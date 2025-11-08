@@ -97,7 +97,6 @@ UKF::UKF(const std::string &configs_path, bool default_init) {
 
   // if we are using default init, set a dummy zeros state:
   if (default_init) {
-    StateVec initial_state;
     CovMat initial_covariance;
     initial_covariance.setZero();
     initial_covariance.diagonal() << 0.5, 0.5, 0.5, // positions
@@ -105,7 +104,7 @@ UKF::UKF(const std::string &configs_path, bool default_init) {
         0.25, 0.25, 0.25,                           // attitude
         1e-4, 1e-4, 1e-4,                           // accelerom
         1e-4, 1e-4, 1e-4;                           // gyro bias
-    initial_state = 1e-3 * Eigen::Matrix<double, N, 1>::Ones();
+    const StateVec initial_state = 1e-3 * Eigen::Matrix<double, N, 1>::Ones();
 
     initialize(initial_state, initial_covariance);
   }
@@ -223,7 +222,7 @@ void UKF::worker_loop(std::chrono::milliseconds period) {
         // update at GNSS time
         update(z.observation, z.R);
 
-        // replay snapshots k+1..end, overwriting their posteriors
+        // replay snapshots k+1 -> end, overwriting their posteriors
         double t_cur = z.timestamp; // we've just updated at t_z
         for (size_t i = static_cast<size_t>(k + 1); i < hist.size(); ++i) {
           const double dt_step = std::max(1e-6, hist.at(i).t - t_cur);

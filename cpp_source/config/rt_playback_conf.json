@@ -1,7 +1,7 @@
 {
   "sample_rate": 0.05,
   "max_measurements": 1000,
-  "imu_data_path": "./data/imu_cleaned.csv",
-  "measurement_file_path": "./data/gnss_cleaned_cleaned.csv",
+  "imu_data_path": "data/imu_cleaned.csv",
+  "measurement_file_path": "./data/gnss_cleaned.csv",
   "output_dir": "./logging"
 }

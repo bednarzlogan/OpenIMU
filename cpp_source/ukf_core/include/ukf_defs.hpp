@@ -187,14 +187,14 @@ inline StateVec f_cont_debug(const StateVec &x, const ControlInput &u,
 
 inline StateVec rk4_step(const StateVec &x, const ControlInput &u, double dt,
                          const UKFParams &params) {
-  StateVec k1 =
-      f_cont(x, u, params.tau_a, params.tau_g, params.gx, params.gy, params.gz);
-  StateVec k2 = f_cont(x + 0.5 * dt * k1, u, params.tau_a, params.tau_g,
-                       params.gx, params.gy, params.gz);
-  StateVec k3 = f_cont(x + 0.5 * dt * k2, u, params.tau_a, params.tau_g,
-                       params.gx, params.gy, params.gz);
-  StateVec k4 = f_cont(x + dt * k3, u, params.tau_a, params.tau_g, params.gx,
-                       params.gy, params.gz);
+  StateVec k1 = f_cont_debug(x, u, params.tau_a, params.tau_g, params.gx,
+                             params.gy, params.gz);
+  StateVec k2 = f_cont_debug(x + 0.5 * dt * k1, u, params.tau_a, params.tau_g,
+                             params.gx, params.gy, params.gz);
+  StateVec k3 = f_cont_debug(x + 0.5 * dt * k2, u, params.tau_a, params.tau_g,
+                             params.gx, params.gy, params.gz);
+  StateVec k4 = f_cont_debug(x + dt * k3, u, params.tau_a, params.tau_g,
+                             params.gx, params.gy, params.gz);
 
   StateVec result = x + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4);
 
