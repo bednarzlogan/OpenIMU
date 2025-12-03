@@ -31,6 +31,11 @@ add_library(ukf::core ALIAS ukf_core)
 # propagate C++ standard to upstream targets
 target_compile_features(ukf_core PUBLIC cxx_std_17)
 
+# for writing logs to predictable locations
+target_compile_definitions(ukf_core PRIVATE
+        UKF_LOG_DIR=\"${PROJECT_SOURCE_DIR}\"
+)
+
 # ========= Simulator library (optional) =========
 if(UKF_BUILD_SIM)
     file(GLOB_RECURSE SIM_SOURCES CONFIGURE_DEPENDS

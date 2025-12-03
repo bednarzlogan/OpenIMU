@@ -19,7 +19,7 @@
     "tau_az": 3600,
     "gx": 0,
     "gy": 0,
-    "gz": 9.81,
+    "gz": 0,
     "Ts": 0.05,
     "averaging_time": 0.1,
     "max_queue_size": 5,

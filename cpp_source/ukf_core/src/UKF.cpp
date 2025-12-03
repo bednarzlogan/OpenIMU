@@ -1,6 +1,8 @@
 #include <atomic>
 #include <cassert>
 #include <fstream>
+#include <filesystem>
+#include <system_error>
 #include <iostream>
 #include <nlohmann/json.hpp>
 #include <optional>
@@ -10,9 +12,52 @@
 
 using json = nlohmann::json;
 
-// TMP
-static std::ofstream debug_log("worker_loop_debug.csv", std::ios::app);
-static std::ofstream ukf_log("ukf_trace_log.csv", std::ios::app);
+// TMP debug txt write outs
+static std::ofstream debug_log;
+static std::ofstream ukf_log;
+
+#ifndef UKF_LOG_DIR
+#define UKF_LOG_DIR "."
+#endif
+
+static std::filesystem::path ukf_log_dir() {
+  return std::filesystem::path{UKF_LOG_DIR};
+}
+
+static void open_csv_logs_and_clear_old() {
+  namespace fs = std::filesystem;
+
+  std::error_code ec;
+  fs::create_directories(ukf_log_dir(), ec); // ok even if it already exists
+
+  const fs::path debug_path = ukf_log_dir() / "worker_loop_debug.csv";
+  const fs::path ukf_path   = ukf_log_dir() / "ukf_trace_log.csv";
+
+  // close if already open (e.g., multiple UKF instances in one process)
+  if (debug_log.is_open()) debug_log.close();
+  if (ukf_log.is_open())   ukf_log.close();
+
+  // clear old logs
+  fs::remove(debug_path, ec);
+  fs::remove(ukf_path, ec);
+
+  // re-open fresh
+  debug_log.open(debug_path, std::ios::out | std::ios::trunc);
+  ukf_log.open(ukf_path, std::ios::out | std::ios::trunc);
+
+  if (!debug_log.is_open()) {
+    std::cerr << "[UKF] Failed to open debug log: " << debug_path << "\n";
+  }
+  if (!ukf_log.is_open()) {
+    std::cerr << "[UKF] Failed to open UKF log: " << ukf_path << "\n";
+  }
+
+  // header
+  if (ukf_log.is_open()) {
+    ukf_log << "x,y,z,vx,vy,vz,roll,pitch,yaw,bax,bay,baz,bgx,bgy,bgz\n";
+    ukf_log.flush();
+  }
+}
 
 // Define the desired format:
 // Precision: Eigen::StreamPrecision (or a specific number like 4)
@@ -56,7 +101,7 @@ void UKF::read_configs(std::ifstream &inFile) {
   _params = hold_config; // assign configurations
 }
 
-UKF::UKF(const std::string &configs_path, bool default_init) {
+UKF::UKF(const std::string &configs_path, const bool default_init) {
   // read in configurables
   // load in the system configurations
   std::ifstream inFile(configs_path);
@@ -68,7 +113,7 @@ UKF::UKF(const std::string &configs_path, bool default_init) {
   read_configs(inFile);
 
   // calculate scaling params
-  double lambda_raw = _alpha * _alpha * (N + _kappa) - N;
+  const double lambda_raw = _alpha * _alpha * (N + _kappa) - N;
   _lambda = std::max(lambda_raw, -0.95 * N);
   _gamma = std::sqrt(N + _lambda);
 
@@ -90,24 +135,23 @@ UKF::UKF(const std::string &configs_path, bool default_init) {
   // retrodiction queue sizing
   hist.set_capacity(hist_cap);
 
-  if (ukf_log.is_open()) {
-    ukf_log << "x,y,z,vx,vy,vz,roll,pitch,yaw,bax,bay,baz,bgx,bgy,bgz"
-            << std::endl;
-  }
-
   // if we are using default init, set a dummy zeros state:
   if (default_init) {
     CovMat initial_covariance;
     initial_covariance.setZero();
     initial_covariance.diagonal() << 0.5, 0.5, 0.5, // positions
-        0.1, 0.1, 0.1,                              // velocitie
+        0.1, 0.1, 0.1,                              // velocity
         0.25, 0.25, 0.25,                           // attitude
-        1e-4, 1e-4, 1e-4,                           // accelerom
+        1e-4, 1e-4, 1e-4,                           // accelerometers
         1e-4, 1e-4, 1e-4;                           // gyro bias
     const StateVec initial_state = 1e-3 * Eigen::Matrix<double, N, 1>::Ones();
 
-    initialize(initial_state, initial_covariance);
+    UKF::initialize(initial_state, initial_covariance);
   }
+
+  // setup debug logs
+  // TODO - add a macro to disable this for production
+  open_csv_logs_and_clear_old();
 }
 
 void UKF::start_filter(std::chrono::milliseconds period) {
@@ -125,13 +169,13 @@ void UKF::stop_filter() {
   worker_.join();
 }
 
-void UKF::read_imu(ImuData imu_measurement) {
+void UKF::read_imu(const ImuData imu_measurement) {
   // wake the worker quickly when new data arrives
   _imu_queue->push(imu_measurement);
   cv_.notify_one();
 }
 
-void UKF::read_gps(Observable observable_measurement) {
+void UKF::read_gps(const Observable observable_measurement) {
   // signal to the filter that we're ready to process GNSS data
   _gnss_queue->push(observable_measurement);
   cv_.notify_one();
@@ -156,7 +200,7 @@ void UKF::worker_loop(std::chrono::milliseconds period) {
   std::optional<ImuData> imu_next;
   std::optional<Observable> gnss_next;
 
-  auto safe_dt = [](double t_now, double t_prev) {
+  auto safe_dt = [](const double t_now, const double t_prev) {
     double dt = t_now - t_prev;
     if (dt < 1e-6)
       dt = 1e-6; // avoid zero/negative
@@ -165,7 +209,7 @@ void UKF::worker_loop(std::chrono::milliseconds period) {
 
   // --- small helper: find last snapshot with t <= tz (reverse scan; hist is
   // short) ---
-  auto find_last_leq = [&](double tz) -> int {
+  auto find_last_leq = [&](const double tz) -> int {
     if (hist.empty())
       return -1;
     for (int i = static_cast<int>(hist.size()) - 1; i >= 0; --i) {
@@ -175,7 +219,7 @@ void UKF::worker_loop(std::chrono::milliseconds period) {
     return -1;
   };
 
-  auto record_snapshot = [&](double t_now, const ControlInput &u) {
+  auto record_snapshot = [&](const double t_now, const ControlInput &u) {
     // snapshot current state; assumes _x/_P are UKF’s current posterior after
     // predict/update
     hist.push_back(Snapshot{_x, _P, u, t_now});
@@ -197,8 +241,7 @@ void UKF::worker_loop(std::chrono::milliseconds period) {
     // (by construction of gnss_is_next, hist is non-empty and front.t <= z.t <=
     // back.t)
     if (z.timestamp <= hist.back().t + TIME_EPS) {
-      const int k = find_last_leq(z.timestamp);
-      if (k >= 0) {
+      if (const int k = find_last_leq(z.timestamp); k >= 0) {
         // expose extent of retrodiction for testing
         _last_replay_steps = k;
 
@@ -213,7 +256,7 @@ void UKF::worker_loop(std::chrono::milliseconds period) {
         // propagate exactly to GNSS time (ZOH with the next step’s control)
         if (z.timestamp > t + TIME_EPS) {
           // k+1 must exist if tz < hist.back().t
-          ControlInput u = hist.at(static_cast<size_t>(k + 1)).u_from_prev;
+          const ControlInput u = hist.at(static_cast<size_t>(k + 1)).u_from_prev;
           const double dt = safe_dt(z.timestamp, t);
           predict(u, dt);
           t = z.timestamp;
@@ -249,13 +292,11 @@ void UKF::worker_loop(std::chrono::milliseconds period) {
   for (;;) {
     // fill holds if empty (non-blocking)
     if (!imu_next) {
-      ImuData m;
-      if (_imu_queue->try_pop(m))
+      if (ImuData m; _imu_queue->try_pop(m))
         imu_next = std::move(m);
     }
     if (!gnss_next) {
-      Observable g;
-      if (_gnss_queue->try_pop(g))
+      if (Observable g; _gnss_queue->try_pop(g))
         gnss_next = std::move(g);
     }
 
@@ -323,8 +364,7 @@ void UKF::worker_loop(std::chrono::milliseconds period) {
     } else {
       // IMU is earlier = process it (or try to stage one)
       if (!imu_next) {
-        ImuData m;
-        if (_imu_queue->try_pop(m))
+        if (ImuData m; _imu_queue->try_pop(m))
           imu_next = std::move(m);
       }
       if (imu_next) {
@@ -420,7 +460,7 @@ void UKF::predict(const ControlInput &u, double dt) {
 
   // debug logging
   if (debug_log.is_open()) {
-    debug_log << "Time update -- current state:\n"
+    debug_log << "Time update -- current state at time "<< _solution_time << ":\n"
               << _x.transpose() << "\nLast control input:\n"
               << u.transpose() << std::endl;
   }
@@ -462,7 +502,7 @@ void UKF::update(const MeasVec &z, const MeasCov &R) {
 
   // debug logging
   if (debug_log.is_open()) {
-    debug_log << "Measurement update -- current state:\n"
+    debug_log << "Measurement update -- current state at time " << _solution_time << ":\n"
               << _x.transpose() << "\nObservation:\n"
               << z.transpose() << std::endl;
   }
